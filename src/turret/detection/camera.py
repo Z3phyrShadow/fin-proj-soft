@@ -1,0 +1,148 @@
+"""
+camera.py — Platform-aware camera abstraction.
+
+Automatically selects the right backend:
+  • Windows / Linux with USB webcam  →  OpenCV VideoCapture
+  • Raspberry Pi with camera module  →  Picamera2 (if installed)
+
+Usage:
+    cam = Camera()
+    cam.open()
+    frame = cam.read()   # numpy BGR frame
+    cam.close()
+"""
+
+import platform
+import sys
+import numpy as np
+import cv2
+
+
+def _is_raspberry_pi() -> bool:
+    """Return True if running on a Raspberry Pi."""
+    try:
+        with open("/proc/device-tree/model", "r") as f:
+            return "raspberry pi" in f.read().lower()
+    except FileNotFoundError:
+        return False
+
+
+class Camera:
+    """
+    Unified camera interface.
+
+    Parameters
+    ----------
+    source : str | int
+        "auto"       — picks picamera2 on Pi, otherwise cv2 device 0
+        "picamera2"  — force picamera2 backend
+        int          — cv2 device index (0, 1, …)
+    width, height, fps : int
+        Requested capture resolution and frame-rate.
+    """
+
+    def __init__(self, source="auto", width=1280, height=720, fps=30):
+        self.source = source
+        self.width  = width
+        self.height = height
+        self.fps    = fps
+
+        self._cap  = None   # OpenCV capture object
+        self._picam = None  # Picamera2 object
+        self._backend: str = ""
+
+    # ──────────────────────────────────────────────────────────────────────────
+    def open(self) -> None:
+        """Open the camera stream."""
+        use_picam = (
+            self.source == "picamera2"
+            or (self.source == "auto" and _is_raspberry_pi())
+        )
+
+        if use_picam:
+            self._open_picamera2()
+        else:
+            device = 0 if self.source == "auto" else int(self.source)
+            self._open_opencv(device)
+
+    def _open_picamera2(self) -> None:
+        try:
+            from picamera2 import Picamera2  # type: ignore
+        except ImportError:
+            raise RuntimeError(
+                "picamera2 is not installed. "
+                "Install it with: sudo apt install python3-picamera2"
+            )
+
+        self._picam   = Picamera2()
+        config        = self._picam.create_preview_configuration(
+            main={"size": (self.width, self.height), "format": "RGB888"}
+        )
+        self._picam.configure(config)
+        self._picam.start()
+        self._backend = "picamera2"
+        print(f"[Camera] Opened Picamera2 ({self.width}×{self.height})")
+
+    def _open_opencv(self, device: int) -> None:
+        self._cap = cv2.VideoCapture(device)
+        if not self._cap.isOpened():
+            raise RuntimeError(
+                f"Could not open camera device {device}. "
+                "Check that your webcam is connected and not in use."
+            )
+        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self.width)
+        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+        self._cap.set(cv2.CAP_PROP_FPS,          self.fps)
+        self._backend = "opencv"
+        actual_w = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        actual_h = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        print(f"[Camera] Opened OpenCV device {device} ({actual_w}×{actual_h})")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    def read(self) -> np.ndarray | None:
+        """
+        Read a single frame.
+
+        Returns
+        -------
+        numpy.ndarray
+            BGR frame (OpenCV-compatible), or None if no frame was captured.
+        """
+        if self._backend == "picamera2":
+            frame_rgb = self._picam.capture_array()
+            return cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+
+        if self._backend == "opencv":
+            ok, frame = self._cap.read()
+            return frame if ok else None
+
+        raise RuntimeError("Camera is not open. Call open() first.")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    def close(self) -> None:
+        """Release camera resources."""
+        if self._picam is not None:
+            self._picam.stop()
+            self._picam = None
+
+        if self._cap is not None:
+            self._cap.release()
+            self._cap = None
+
+        self._backend = ""
+
+    # ──────────────────────────────────────────────────────────────────────────
+    def __enter__(self):
+        self.open()
+        return self
+
+    def __exit__(self, *_):
+        self.close()
+
+    @property
+    def is_open(self) -> bool:
+        return bool(self._backend)
+
+    @property
+    def backend(self) -> str:
+        return self._backend

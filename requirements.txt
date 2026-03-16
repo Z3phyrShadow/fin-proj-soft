@@ -1,0 +1,12 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Core — required on both Windows (dev) and Raspberry Pi (production)
+# ──────────────────────────────────────────────────────────────────────────────
+ultralytics>=8.3.0     # YOLOv11 (includes yolo11n weights download)
+opencv-python>=4.9.0   # video capture + display (also handles USB webcam on Pi)
+numpy>=1.24.0
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Optional GPU acceleration (CUDA) — comment out on Pi or CPU-only machines
+# ──────────────────────────────────────────────────────────────────────────────
+# torch>=2.2.0
+# torchvision>=0.17.0
