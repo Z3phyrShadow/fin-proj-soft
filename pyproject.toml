@@ -1,0 +1,15 @@
+[project]
+name = "fin-proj-soft"
+version = "0.1.0"
+description = "Raspberry Pi automatic turret — YOLOv11n detection software"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "ultralytics>=8.3.0",    # YOLOv11 (downloads yolo11n.pt automatically)
+    "opencv-python>=4.9.0",  # camera capture + display window
+    "numpy>=1.24.0",
+]
+
+[tool.uv]
+package = false
+dev-dependencies = []

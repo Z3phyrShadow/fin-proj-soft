@@ -31,15 +31,11 @@ fin-proj-soft/
 ### Windows (development — laptop webcam)
 
 ```bash
-# 1. Create a virtual environment (recommended)
-python -m venv .venv
-.venv\Scripts\activate
+# 1. Sync dependencies (creates .venv automatically)
+uv sync
 
-# 2. Install dependencies
-pip install -r requirements.txt
-
-# 3. Run
-python main.py
+# 2. Run
+uv run python main.py
 ```
 
 The first run will automatically download `yolo11n.pt` (~6 MB) into `models/`.
@@ -47,19 +43,18 @@ The first run will automatically download `yolo11n.pt` (~6 MB) into `models/`.
 ### Raspberry Pi (production)
 
 ```bash
-# 1. Install system-level camera support
+# 1. Install picamera2 via apt (has Linux-only native deps, easiest via system package)
 sudo apt update
 sudo apt install python3-picamera2
 
-# 2. Install Python deps
-pip install -r requirements.txt
-pip install -r requirements-pi.txt
+# 2. Sync the remaining Python deps
+uv sync
 
 # 3. Run
-python main.py
+uv run python main.py
 ```
 
-The code auto-detects the platform — no changes needed between environments.
+The code auto-detects the platform — no source changes needed between environments.
 
 ---
 
