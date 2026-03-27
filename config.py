@@ -1,41 +1,57 @@
 """
-config.py — Central configuration for the turret detection system.
-Tweak these values to adjust detection behaviour, display, and camera settings.
+Configuration for RAKSHAQ Turret System
+Centralized settings for all modules
 """
 
-import os
+# ==================== DETECTION ====================
+MODEL_PATH = "models/yolo11n.pt"
+CONFIDENCE = 0.50
+IOU_THRESH = 0.45
+TRACK_CLASSES = ["person"]  # None = detect all COCO classes
+CAMERA_SOURCE = "auto"  # "auto", "picamera2", or device index
+FRAME_WIDTH = 1280
+FRAME_HEIGHT = 720
+SHOW_FPS = True
 
-# ─── Model ────────────────────────────────────────────────────────────────────
-MODEL_PATH   = "models/yolo11n.pt"   # downloaded automatically on first run
-CONFIDENCE   = 0.50                   # minimum detection confidence (0–1)
-IOU_THRESH   = 0.45                   # NMS IoU threshold
-IMGSZ        = 640                    # inference input size (px)
+# ==================== ACTION LAYER ====================
 
-# Classes to track — None tracks all COCO classes; set to a list to filter.
-# Example: TRACK_CLASSES = ["person"]
-TRACK_CLASSES = ["person"]
+# Operating Modes
+DEFAULT_MODE = "monitor"         # "standby", "monitor", "engage", "abort"
 
-# ─── Camera ───────────────────────────────────────────────────────────────────
-# On Windows / Linux with USB webcam set to an integer (0 = default cam).
-# On Raspberry Pi with the official camera module, set to "picamera2".
-CAMERA_SOURCE = "auto"   # "auto" | 0 | 1 | "picamera2"
-FRAME_WIDTH   = 1280
-FRAME_HEIGHT  = 720
-CAMERA_FPS    = 30
+# Servo Control
+PAN_SERVO_PIN = 17               # GPIO pin for pan servo
+TILT_SERVO_PIN = 27              # GPIO pin for tilt servo
+SERVO_FREQUENCY = 50             # PWM frequency (Hz)
+SMOOTHING_FACTOR = 0.3           # Movement smoothing (0=instant, 1=no movement)
 
-# ─── Display ──────────────────────────────────────────────────────────────────
-WINDOW_TITLE  = "Turret — Detection Feed"
-SHOW_FPS      = True
-SHOW_LABELS   = True
-SHOW_CONF     = True
+# Servo Limits
+PAN_MIN_ANGLE = 0                # Minimum pan angle (degrees)
+PAN_MAX_ANGLE = 180              # Maximum pan angle (degrees)
+TILT_MIN_ANGLE = 45              # Minimum tilt angle (degrees)
+TILT_MAX_ANGLE = 135             # Maximum tilt angle (degrees)
 
-# Box colours (BGR) per class; falls back to DEFAULT_BOX_COLOR for unknowns.
-CLASS_COLORS = {
-    "person": (0, 230, 118),
-}
-DEFAULT_BOX_COLOR = (0, 165, 255)
+# Targeting
+TARGETING_STRATEGY = "combined"  # "closest", "confident", "largest", "combined"
+CENTER_TOLERANCE_X = 50          # Pixels - target considered centered
+CENTER_TOLERANCE_Y = 50          # Pixels
 
-# ─── Paths ────────────────────────────────────────────────────────────────────
-ROOT_DIR   = os.path.dirname(os.path.abspath(__file__))
-MODELS_DIR = os.path.join(ROOT_DIR, "models")
-LOGS_DIR   = os.path.join(ROOT_DIR, "logs")
+# Engagement
+ENGAGEMENT_COOLDOWN = 2.0        # Seconds between engagements
+AUTO_SCAN_ON_NO_TARGET = True    # Scan when no targets detected
+SCAN_INTERVAL = 30               # Seconds between scans
+
+# ==================== DISPLAY ====================
+
+# Visualization
+SHOW_MODE_INDICATOR = True       # Show current mode on display
+SHOW_TARGET_RETICLE = True       # Show crosshair on selected target
+SHOW_POSITION_INFO = True        # Show pan/tilt angles
+
+# Colors (BGR format)
+COLOR_TARGET = (0, 0, 255)       # Red for selected target
+COLOR_RETICLE = (0, 255, 255)    # Yellow crosshair
+COLOR_TEXT = (255, 255, 255)     # White text
+COLOR_MODE_STANDBY = (128, 128, 128)  # Gray
+COLOR_MODE_MONITOR = (0, 255, 255)    # Yellow
+COLOR_MODE_ENGAGE = (0, 0, 255)       # Red
+COLOR_MODE_ABORT = (255, 0, 0)        # Blue
