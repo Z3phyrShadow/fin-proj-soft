@@ -16,11 +16,14 @@ fin-proj-soft/
 └── src/turret/
     ├── detection/
     │   ├── camera.py                    # Platform-aware camera (Pi cam / webcam)
-    │   └── detector.py                  # YOLOv11n wrapper → Detection objects
+    │   ├── detector.py                  # YOLOv11n wrapper → Detection objects
+    │   └── depth.py                     # DepthEstimator (bbox proxy / IR sensor)
     ├── action/
     │   ├── modes.py                     # ActionMode enum + ActionController
     │   ├── controller.py                # TurretController (GPIO / Mock GPIO)
     │   └── targeting.py                 # TargetSelector (priority strategies)
+    ├── ui/
+    │   └── depth_control.py             # Floating depth threshold control window
     └── utils/
         └── visualizer.py                # Bounding-box + HUD overlay
 ```
@@ -98,6 +101,30 @@ Set via `TARGETING_STRATEGY` in `config.py`:
 
 ---
 
+## Depth System
+
+A floating **Depth Control** window opens alongside the main feed.
+Use the trackbar to set the proximity threshold (0–100).
+When the selected target's depth score crosses the threshold for 3 consecutive frames,
+the turret automatically switches from **MONITOR → ENGAGE**.
+When it retreats for 10 frames, it returns to **MONITOR**.
+
+### Visual indicators
+- A small bar renders below each target bounding box — green = safe, red = triggered
+- A yellow tick on the bar marks the current threshold position
+- The mode label in the main feed switches colour when ENGAGE fires
+
+### Backends
+
+| `DEPTH_BACKEND` | How depth is measured | Use case |
+|---|---|---|
+| `"bbox"` | Bounding-box height ÷ frame height × 100 | Testing (now) |
+| `"ir"` | IR laser range sensor reading, normalised to 0–100 | Production (Pi) |
+
+Swap backend in `config.py` — no code changes needed anywhere else.
+
+---
+
 ## Configuration (`config.py`)
 
 ### Detection
@@ -120,6 +147,16 @@ Set via `TARGETING_STRATEGY` in `config.py`:
 | `CENTER_TOLERANCE_X/Y` | `50` | Px tolerance to consider target centred |
 | `ENGAGEMENT_COOLDOWN` | `2.0` | Seconds between engagements |
 | `AUTO_SCAN_ON_NO_TARGET` | `True` | Sweep when no targets detected |
+
+### Depth
+| Key | Default | Description |
+|-----|---------|-------------|
+| `DEPTH_BACKEND` | `"bbox"` | `"bbox"` (testing) or `"ir"` (production) |
+| `DEPTH_THRESHOLD` | `40` | Proximity % that triggers ENGAGE |
+| `DEPTH_ENGAGE_FRAMES` | `3` | Consecutive frames above threshold → ENGAGE |
+| `DEPTH_RETREAT_FRAMES` | `10` | Consecutive frames below threshold → MONITOR |
+| `DEPTH_IR_MAX_CM` | `500.0` | IR sensor range for normalisation (ir backend only) |
+| `SHOW_DEPTH_UI` | `True` | Show floating depth control window |
 
 ---
 
@@ -163,5 +200,6 @@ Servo angle range: Pan 0–180°, Tilt 45–135°. Both default to 90° (centre)
 
 - [x] Phase 1 — Real-time YOLOv11n detection
 - [x] Phase 2 — Action layer (modes, targeting, servo control scaffold)
+- [x] Phase 2b — Depth-based auto-engage trigger (bbox proxy + IR sensor interface)
 - [ ] Phase 3 — PID controller for smooth tracking
 - [ ] Phase 4 — Safety features, arming logic & trigger control
