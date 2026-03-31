@@ -55,3 +55,22 @@ COLOR_MODE_STANDBY = (128, 128, 128)  # Gray
 COLOR_MODE_MONITOR = (0, 255, 255)    # Yellow
 COLOR_MODE_ENGAGE = (0, 0, 255)       # Red
 COLOR_MODE_ABORT = (255, 0, 0)        # Blue
+
+# ==================== DEPTH ====================
+
+# Backend: "bbox" (bounding-box size proxy, for testing)
+#          "ir"   (IR laser range sensor, for production)
+DEPTH_BACKEND       = "bbox"
+
+# IR sensor max range in cm (used only when DEPTH_BACKEND = "ir")
+DEPTH_IR_MAX_CM     = 500.0
+
+# Proximity % (0–100) above which the turret auto-engages
+DEPTH_THRESHOLD     = 40
+
+# Hysteresis — prevents flickering at the boundary
+DEPTH_ENGAGE_FRAMES  = 3    # consecutive frames above threshold → switch to ENGAGE
+DEPTH_RETREAT_FRAMES = 10   # consecutive frames below threshold → return to MONITOR
+
+# Show the floating depth control window
+SHOW_DEPTH_UI       = True

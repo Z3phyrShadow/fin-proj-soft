@@ -174,3 +174,7 @@ class Visualizer:
         )
 
         return out
+
+    def draw_detections(self, frame: np.ndarray, detections) -> np.ndarray:
+        """Alias for draw() — compatibility with main.py."""
+        return self.draw(frame, detections)

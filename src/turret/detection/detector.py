@@ -156,3 +156,7 @@ class Detector:
     @property
     def class_names(self) -> dict[int, str]:
         return self._names
+
+
+# Alias for compatibility with main.py
+YOLODetector = Detector

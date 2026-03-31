@@ -132,6 +132,10 @@ class Camera:
         self._backend = ""
 
     # ──────────────────────────────────────────────────────────────────────────
+    def release(self):
+        """Alias for close() — compatibility with main.py."""
+        self.close()
+
     def __enter__(self):
         self.open()
         return self
@@ -146,3 +150,10 @@ class Camera:
     @property
     def backend(self) -> str:
         return self._backend
+
+
+def get_camera(source="auto", width=1280, height=720, fps=30) -> Camera:
+    """Factory function — creates and opens a Camera. Compatibility shim for main.py."""
+    cam = Camera(source=source, width=width, height=height, fps=fps)
+    cam.open()
+    return cam
