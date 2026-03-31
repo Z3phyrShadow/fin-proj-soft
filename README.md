@@ -1,8 +1,7 @@
-# Raspberry Pi Auto-Turret — Fin-Proj-Soft
+# RAKSHAQ — Autonomous AI Turret System
 
-A computer-vision-driven automatic turret built around a Raspberry Pi.
-This repository contains the detection module (Phase 1) using **YOLOv11n**,
-with motor/servo control to follow in a later phase.
+A Raspberry Pi-based automatic turret with real-time object detection and servo control.
+Built with **YOLOv11n** for detection and a four-mode action layer for autonomous targeting.
 
 ---
 
@@ -10,18 +9,20 @@ with motor/servo control to follow in a later phase.
 
 ```
 fin-proj-soft/
-├── main.py                          # Entry point
-├── config.py                        # All tunable parameters
-├── models/                          # YOLO weights (auto-downloaded)
-├── src/
-│   └── turret/
-│       ├── detection/
-│       │   ├── camera.py            # Platform-aware camera (Pi cam / webcam)
-│       │   └── detector.py          # YOLOv11n wrapper → Detection objects
-│       └── utils/
-│           └── visualizer.py        # Bounding-box + HUD overlay
-├── requirements.txt                 # Core deps (Windows & Pi)
-└── requirements-pi.txt              # Pi-only deps (picamera2)
+├── main.py                              # Entry point (RakshaqSystem class)
+├── config.py                            # All tunable parameters
+├── models/                              # YOLO weights (auto-downloaded)
+├── pyproject.toml                       # uv dependencies
+└── src/turret/
+    ├── detection/
+    │   ├── camera.py                    # Platform-aware camera (Pi cam / webcam)
+    │   └── detector.py                  # YOLOv11n wrapper → Detection objects
+    ├── action/
+    │   ├── modes.py                     # ActionMode enum + ActionController
+    │   ├── controller.py                # TurretController (GPIO / Mock GPIO)
+    │   └── targeting.py                 # TargetSelector (priority strategies)
+    └── utils/
+        └── visualizer.py                # Bounding-box + HUD overlay
 ```
 
 ---
@@ -31,85 +32,136 @@ fin-proj-soft/
 ### Windows (development — laptop webcam)
 
 ```bash
-# 1. Sync dependencies (creates .venv automatically)
+# Sync dependencies (creates .venv automatically)
 uv sync
 
-# 2. Run
+# Run
 uv run python main.py
 ```
 
 The first run will automatically download `yolo11n.pt` (~6 MB) into `models/`.
+On Windows, `RPi.GPIO` is unavailable — the system switches to **Mock GPIO** automatically,
+so servo commands are printed to the console instead of moving real hardware.
 
 ### Raspberry Pi (production)
 
 ```bash
-# 1. Install picamera2 via apt (has Linux-only native deps, easiest via system package)
+# Install picamera2 via apt (Linux-native deps — easiest this way)
 sudo apt update
 sudo apt install python3-picamera2
 
-# 2. Sync the remaining Python deps
+# Sync the remaining Python deps
 uv sync
 
-# 3. Run
+# Run
 uv run python main.py
 ```
 
-The code auto-detects the platform — no source changes needed between environments.
+---
+
+## Operating Modes
+
+Switch modes at runtime with keyboard shortcuts:
+
+| Key | Mode       | Behaviour |
+|-----|------------|-----------|
+| `1` | STANDBY    | No movement, passive logging only |
+| `2` | MONITOR    | Track targets, alert on detection, no engagement |
+| `3` | ENGAGE     | Full tracking + engagement (with cooldown) |
+| `0` | ABORT      | Emergency stop — cannot jump directly to ENGAGE from here |
+
+Default mode on startup is set via `DEFAULT_MODE` in `config.py` (default: `"monitor"`).
+
+---
+
+## Keyboard Controls
+
+| Key      | Action |
+|----------|--------|
+| `q` / `Esc` | Quit |
+| `r`      | Reset turret to center |
+| `s`      | Manual scan sweep |
+| `1–3, 0` | Switch operating mode |
+
+---
+
+## Targeting Strategies
+
+Set via `TARGETING_STRATEGY` in `config.py`:
+
+| Strategy   | Description |
+|------------|-------------|
+| `closest`  | Target nearest to frame centre |
+| `confident`| Target with highest confidence score |
+| `largest`  | Target with largest bounding box |
+| `combined` | Weighted score of confidence × proximity × size *(recommended)* |
 
 ---
 
 ## Configuration (`config.py`)
 
+### Detection
 | Key | Default | Description |
-|---|---|---|
-| `MODEL_PATH` | `models/yolo11n.pt` | Path to YOLO weights |
-| `CONFIDENCE` | `0.50` | Minimum detection confidence |
-| `IOU_THRESH` | `0.45` | NMS IoU threshold |
-| `TRACK_CLASSES` | `["person"]` | COCO classes to detect (`None` = all) |
+|-----|---------|-------------|
+| `MODEL_PATH` | `models/yolo11n.pt` | YOLO weights path |
+| `CONFIDENCE` | `0.50` | Min detection confidence |
+| `TRACK_CLASSES` | `["person"]` | COCO classes to track (`None` = all) |
 | `CAMERA_SOURCE` | `"auto"` | `"auto"` / `"picamera2"` / device index |
-| `FRAME_WIDTH/HEIGHT` | `1280 × 720` | Capture resolution |
-| `SHOW_FPS` | `True` | FPS counter in preview window |
+| `FRAME_WIDTH/HEIGHT` | `1280×720` | Capture resolution |
 
----
-
-## Controls
-
-| Key | Action |
-|---|---|
-| `q` or `Esc` | Quit |
+### Action Layer
+| Key | Default | Description |
+|-----|---------|-------------|
+| `DEFAULT_MODE` | `"monitor"` | Startup mode |
+| `PAN_SERVO_PIN` | `17` | GPIO BCM pin for pan servo |
+| `TILT_SERVO_PIN` | `27` | GPIO BCM pin for tilt servo |
+| `SMOOTHING_FACTOR` | `0.3` | Movement smoothing (0 = instant, 1 = no movement) |
+| `TARGETING_STRATEGY` | `"combined"` | Target selection strategy |
+| `CENTER_TOLERANCE_X/Y` | `50` | Px tolerance to consider target centred |
+| `ENGAGEMENT_COOLDOWN` | `2.0` | Seconds between engagements |
+| `AUTO_SCAN_ON_NO_TARGET` | `True` | Sweep when no targets detected |
 
 ---
 
 ## Detection Output
 
-Each detected object is represented by a `Detection` object:
+Each detected object is a `Detection` object:
 
 ```python
 Detection(
-    class_id   = 0,
-    class_name = "person",
-    confidence = 0.87,
-    x1=120, y1=45, x2=380, y2=610,   # bounding box
+    class_id=0, class_name="person", confidence=0.87,
+    x1=120, y1=45, x2=380, y2=610,
 )
-# helpers:
-det.center   # (cx, cy) — useful for turret targeting
-det.width    # px
-det.height   # px
+det.center   # (cx, cy) — used for servo targeting
 ```
 
 ---
 
-## Roadmap
+## Servo Wiring (Raspberry Pi)
 
-- [x] Phase 1 — Real-time detection (YOLOv11n)
-- [ ] Phase 2 — Turret targeting (servo/motor control via GPIO)
-- [ ] Phase 3 — Tracking loop (PID controller)
-- [ ] Phase 4 — Safety features & arming logic
+```
+Pan servo  signal  →  GPIO 17 (BCM)
+Tilt servo signal  →  GPIO 27 (BCM)
+Both servos VCC    →  5V rail
+Both servos GND    →  GND
+```
+
+Servo angle range: Pan 0–180°, Tilt 45–135°. Both default to 90° (centre).
 
 ---
 
 ## Requirements
 
 - Python 3.10+
-- Raspberry Pi 4 / 5 (or any Linux/Windows machine for dev)
-- Pi Camera Module v2/v3 **or** any USB webcam (for testing)
+- Raspberry Pi 4 / 5 (or any Windows/Linux machine for development)
+- Pi Camera Module v2/v3 **or** USB webcam (for testing)
+- 2× SG90 (or similar) servo motors
+
+---
+
+## Roadmap
+
+- [x] Phase 1 — Real-time YOLOv11n detection
+- [x] Phase 2 — Action layer (modes, targeting, servo control scaffold)
+- [ ] Phase 3 — PID controller for smooth tracking
+- [ ] Phase 4 — Safety features, arming logic & trigger control
