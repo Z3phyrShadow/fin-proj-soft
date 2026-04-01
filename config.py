@@ -12,6 +12,7 @@ CAMERA_SOURCE = "auto"  # "auto", "picamera2", or device index
 FRAME_WIDTH = 1280
 FRAME_HEIGHT = 720
 SHOW_FPS = True
+CAMERA_THREADED = True   # capture frames in background thread (recommended on Pi)
 
 # ==================== ACTION LAYER ====================
 

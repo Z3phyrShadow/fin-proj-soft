@@ -153,8 +153,88 @@ class Camera:
         return self._backend
 
 
-def get_camera(source="auto", width=1280, height=720, fps=30) -> Camera:
-    """Factory function — creates and opens a Camera. Compatibility shim for main.py."""
+def get_camera(source="auto", width=1280, height=720, fps=30,
+               threaded: bool = False):
+    """
+    Factory — creates and opens a Camera (or ThreadedCamera).
+
+    Parameters
+    ----------
+    threaded : bool
+        If True, wraps the camera in a background capture thread so
+        the main loop always gets the latest frame without blocking.
+        Recommended on Raspberry Pi where picamera2 read latency is high.
+    """
     cam = Camera(source=source, width=width, height=height, fps=fps)
+    if threaded:
+        cam = ThreadedCamera(cam)
     cam.open()
     return cam
+
+
+class ThreadedCamera:
+    """
+    Wraps a Camera and continuously captures frames in a daemon thread.
+
+    The main thread calls read() and always gets the most recent frame
+    immediately — no waiting for the camera sensor exposure cycle.
+
+    Parameters
+    ----------
+    camera : Camera
+        An (unopened) Camera instance to wrap.
+    """
+
+    def __init__(self, camera: Camera):
+        import threading
+        self._camera  = camera
+        self._frame   = None
+        self._lock    = threading.Lock()
+        self._running = False
+        self._thread  = None
+        self._threading = threading
+
+    # ──────────────────────────────────────────────────────────────────────────
+    def open(self) -> None:
+        self._camera.open()
+        self._running = True
+        self._thread  = self._threading.Thread(
+            target=self._capture_loop, daemon=True, name="CameraThread"
+        )
+        self._thread.start()
+        # Wait for the first frame before returning
+        import time
+        deadline = time.time() + 5.0
+        while self._frame is None and time.time() < deadline:
+            time.sleep(0.01)
+        print(f"[Camera] Threaded capture started ({self._camera.backend})")
+
+    def _capture_loop(self) -> None:
+        while self._running:
+            frame = self._camera.read()
+            if frame is not None:
+                with self._lock:
+                    self._frame = frame
+
+    # ──────────────────────────────────────────────────────────────────────────
+    def read(self) -> np.ndarray | None:
+        with self._lock:
+            return self._frame
+
+    def release(self) -> None:
+        self._running = False
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+        self._camera.close()
+
+    # Aliases / pass-throughs
+    def close(self) -> None:
+        self.release()
+
+    @property
+    def backend(self) -> str:
+        return self._camera.backend
+
+    @property
+    def is_open(self) -> bool:
+        return self._running

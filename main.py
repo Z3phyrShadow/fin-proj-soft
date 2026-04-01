@@ -35,7 +35,8 @@ class RakshaqSystem:
         self.camera = get_camera(
             source=config.CAMERA_SOURCE,
             width=config.FRAME_WIDTH,
-            height=config.FRAME_HEIGHT
+            height=config.FRAME_HEIGHT,
+            threaded=config.CAMERA_THREADED,
         )
 
         print("[DETECTOR] Loading YOLO model...")
