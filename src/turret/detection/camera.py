@@ -76,7 +76,7 @@ class Camera:
 
         self._picam   = Picamera2()
         config        = self._picam.create_preview_configuration(
-            main={"size": (self.width, self.height), "format": "RGB888"}
+            main={"size": (self.width, self.height), "format": "XRGB8888"}
         )
         self._picam.configure(config)
         self._picam.start()
@@ -109,8 +109,9 @@ class Camera:
             BGR frame (OpenCV-compatible), or None if no frame was captured.
         """
         if self._backend == "picamera2":
-            frame_rgb = self._picam.capture_array()
-            return cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+            # XRGB8888 stores pixels as B,G,R,X in memory.
+            # First 3 channels give BGR directly — no cvtColor needed.
+            return self._picam.capture_array()[:, :, :3]
 
         if self._backend == "opencv":
             ok, frame = self._cap.read()
