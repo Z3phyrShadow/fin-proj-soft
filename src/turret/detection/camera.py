@@ -110,8 +110,8 @@ class Camera:
         """
         if self._backend == "picamera2":
             # XRGB8888 stores pixels as B,G,R,X in memory.
-            # First 3 channels give BGR directly — no cvtColor needed.
-            return self._picam.capture_array()[:, :, :3]
+            # Slice to drop X channel; ascontiguousarray ensures OpenCV-compatible memory layout.
+            return np.ascontiguousarray(self._picam.capture_array()[:, :, :3])
 
         if self._backend == "opencv":
             ok, frame = self._cap.read()
