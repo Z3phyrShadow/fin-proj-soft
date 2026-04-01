@@ -46,17 +46,20 @@ The first run will automatically download `yolo11n.pt` (~6 MB) into `models/`.
 On Windows, `RPi.GPIO` is unavailable — the system switches to **Mock GPIO** automatically,
 so servo commands are printed to the console instead of moving real hardware.
 
-### Raspberry Pi (production)
+### Raspberry Pi 5 (production)
 
 ```bash
-# Install picamera2 via apt (Linux-native deps — easiest this way)
+# 1. Install picamera2 via apt
 sudo apt update
 sudo apt install python3-picamera2
 
-# Sync the remaining Python deps
+# 2. Create the venv with system-site-packages so picamera2 is visible inside it
+uv venv --system-site-packages
+
+# 3. Sync the remaining Python deps
 uv sync
 
-# Run
+# 4. Run
 uv run python main.py
 ```
 
@@ -84,6 +87,7 @@ Default mode on startup is set via `DEFAULT_MODE` in `config.py` (default: `"mon
 | `q` / `Esc` | Quit |
 | `r`      | Reset turret to center |
 | `s`      | Manual scan sweep |
+| `d`      | Toggle depth trigger ON / OFF |
 | `1–3, 0` | Switch operating mode |
 
 ---
@@ -151,6 +155,7 @@ Swap backend in `config.py` — no code changes needed anywhere else.
 ### Depth
 | Key | Default | Description |
 |-----|---------|-------------|
+| `DEPTH_ENABLED` | `True` | Enable depth trigger on startup (`d` key toggles at runtime) |
 | `DEPTH_BACKEND` | `"bbox"` | `"bbox"` (testing) or `"ir"` (production) |
 | `DEPTH_THRESHOLD` | `40` | Proximity % that triggers ENGAGE |
 | `DEPTH_ENGAGE_FRAMES` | `3` | Consecutive frames above threshold → ENGAGE |
@@ -190,8 +195,8 @@ Servo angle range: Pan 0–180°, Tilt 45–135°. Both default to 90° (centre)
 ## Requirements
 
 - Python 3.10+
-- Raspberry Pi 4 / 5 (or any Windows/Linux machine for development)
-- Pi Camera Module v2/v3 **or** USB webcam (for testing)
+- **Raspberry Pi 5** (or any Windows/Linux machine for development)
+- **Pi Camera Module v3** (production) **or** USB webcam / laptop cam (testing)
 - 2× SG90 (or similar) servo motors
 
 ---

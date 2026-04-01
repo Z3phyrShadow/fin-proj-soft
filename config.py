@@ -72,5 +72,8 @@ DEPTH_THRESHOLD     = 40
 DEPTH_ENGAGE_FRAMES  = 3    # consecutive frames above threshold → switch to ENGAGE
 DEPTH_RETREAT_FRAMES = 10   # consecutive frames below threshold → return to MONITOR
 
+# Enable depth trigger module (can be toggled at runtime with 'd' key)
+DEPTH_ENABLED       = False
+
 # Show the floating depth control window
-SHOW_DEPTH_UI       = True
+SHOW_DEPTH_UI       = False

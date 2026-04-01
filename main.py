@@ -87,13 +87,19 @@ class RakshaqSystem:
 
         self.depth_ui: DepthControlUI | None = None
         if config.SHOW_DEPTH_UI:
-            self.depth_ui = DepthControlUI(initial_threshold=config.DEPTH_THRESHOLD)
+            self.depth_ui = DepthControlUI(
+                initial_threshold=config.DEPTH_THRESHOLD,
+                initial_enabled=config.DEPTH_ENABLED,
+            )
             self.depth_ui.open()
 
         # Hysteresis counters
         self._engage_counter  = 0
         self._retreat_counter = 0
         self._last_depth      = 0.0
+
+        # Depth enabled flag (toggled with 'd' key)
+        self._depth_enabled = config.DEPTH_ENABLED
 
         # General state
         self.running       = False
@@ -118,6 +124,7 @@ class RakshaqSystem:
         print("  q / Esc  - Quit system")
         print("  r        - Reset turret to center")
         print("  s        - Manual scan")
+        print("  d        - Toggle depth trigger ON/OFF")
         print()
         print("  1        - STANDBY mode  (no movement)")
         print("  2        - MONITOR mode  (track + alert)")
@@ -145,11 +152,17 @@ class RakshaqSystem:
 
         # DEPTH — Estimate and apply auto-engage logic
         depth = 0.0
-        if target:
-            depth = self.depth_estimator.estimate(target, config.FRAME_HEIGHT)
-            self._update_depth_trigger(depth)
+        if target and self._depth_enabled:
+            try:
+                depth = self.depth_estimator.estimate(target, config.FRAME_HEIGHT)
+                self._update_depth_trigger(depth)
+            except Exception as exc:
+                print(f"[DEPTH] Estimation error (disabling): {exc}")
+                self._depth_enabled = False
+                if self.depth_ui:
+                    self.depth_ui.set_enabled(False)
         else:
-            # Reset counters when no target in view
+            # Reset counters when no target or depth is off
             self._engage_counter  = 0
             self._retreat_counter = 0
         self._last_depth = depth
@@ -259,9 +272,10 @@ class RakshaqSystem:
                            cv2.MARKER_CROSS, 30, 2)
             cv2.circle(frame, (cx, cy), 40, config.COLOR_RETICLE, 2)
 
-            # Depth bar below the target bbox
-            threshold = self.depth_ui.threshold if self.depth_ui else config.DEPTH_THRESHOLD
-            self._draw_depth_bar(frame, target, depth, threshold)
+            # Depth bar below the target bbox (only when depth is active)
+            if self._depth_enabled:
+                threshold = self.depth_ui.threshold if self.depth_ui else config.DEPTH_THRESHOLD
+                self._draw_depth_bar(frame, target, depth, threshold)
 
         # Pan/tilt position — bottom left
         if config.SHOW_POSITION_INFO:
@@ -269,6 +283,13 @@ class RakshaqSystem:
             pos_text = f"Pan: {pan:.0f}° | Tilt: {tilt:.0f}°"
             cv2.putText(frame, pos_text, (10, h - 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, config.COLOR_TEXT, 2)
+
+        # Depth status indicator (bottom right)
+        depth_txt   = "DEPTH: ON" if self._depth_enabled else "DEPTH: OFF"
+        depth_col   = (0, 200, 80)  if self._depth_enabled else (60, 60, 60)
+        (tw, _), _  = cv2.getTextSize(depth_txt, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        cv2.putText(frame, depth_txt, (w - tw - 10, h - 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, depth_col, 1, cv2.LINE_AA)
 
         return frame
 
@@ -333,6 +354,18 @@ class RakshaqSystem:
             self.change_mode(ActionMode.ENGAGE)
         elif key == ord('0'):
             self.change_mode(ActionMode.ABORT)
+        elif key == ord('d'):
+            self._depth_enabled = not self._depth_enabled
+            state = "ON" if self._depth_enabled else "OFF"
+            print(f"\n[DEPTH] Depth trigger turned {state}")
+            if self.depth_ui:
+                self.depth_ui.set_enabled(self._depth_enabled)
+            # Return to MONITOR if disabling while in ENGAGE
+            if not self._depth_enabled:
+                self._engage_counter  = 0
+                self._retreat_counter = 0
+                if self.action_controller.current_mode == ActionMode.ENGAGE:
+                    self.change_mode(ActionMode.MONITOR)
         return True
 
     # ──────────────────────────────────────────────────────────────────────────
