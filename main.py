@@ -278,7 +278,8 @@ class RakshaqSystem:
 
             if self._depth_enabled:
                 threshold = self.depth_ui.threshold if self.depth_ui else config.DEPTH_THRESHOLD
-                self._draw_depth_bar(frame, target, depth, threshold)
+                max_val   = config.TOF_MAX_MM if self.depth_estimator.uses_mm else 100
+                self._draw_depth_bar(frame, target, depth, threshold, max_val)
 
         # Sensor HUD (top-right) — TOF + sonar
         if config.SHOW_SENSOR_HUD:
@@ -309,8 +310,8 @@ class RakshaqSystem:
 
     # ──────────────────────────────────────────────────────────────────────────
     @staticmethod
-    def _draw_depth_bar(frame, target, depth, threshold) -> None:
-        """Draw a compact distance bar beneath the target bbox."""
+    def _draw_depth_bar(frame, target, depth, threshold, max_val: float = 100) -> None:
+        """Draw a compact distance/proximity bar beneath the target bbox."""
         bx0, bx1 = target.x1, target.x2
         by0 = target.y2 + 4
         by1 = by0 + 6
@@ -318,16 +319,21 @@ class RakshaqSystem:
 
         cv2.rectangle(frame, (bx0, by0), (bx1, by1), (50, 50, 50), -1)
 
-        if depth > 0:
-            fill_w = min(int(bw * (depth / 100.0)), bw)
-            col    = (0, 80, 255) if depth >= threshold else (0, 200, 100)
+        if depth > 0 and max_val > 0:
+            fill_ratio = min(depth / max_val, 1.0)
+            fill_w     = int(bw * fill_ratio)
+            # mm mode: engage when depth <= threshold (red when close)
+            # pct mode: engage when depth >= threshold (red when bbox fills frame)
+            triggered = (depth <= threshold) if max_val > 100 else (depth >= threshold)
+            col = (0, 80, 255) if triggered else (0, 200, 100)
             if fill_w > 0:
                 cv2.rectangle(frame, (bx0, by0), (bx0 + fill_w, by1), col, -1)
 
-        tick_x = bx0 + int(bw * min(threshold / 100.0, 1.0))
+        tick_x = bx0 + int(bw * min(threshold / max(max_val, 1), 1.0))
         cv2.line(frame, (tick_x, by0 - 2), (tick_x, by1 + 2), (0, 220, 255), 1)
 
-        cv2.putText(frame, f"{depth:.0f}",
+        unit = "mm" if max_val > 100 else "%"
+        cv2.putText(frame, f"{depth:.0f}{unit}",
                     (bx0, by0 - 4), cv2.FONT_HERSHEY_SIMPLEX,
                     0.38, (200, 200, 200), 1, cv2.LINE_AA)
 
