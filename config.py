@@ -4,10 +4,10 @@ Modify values here; no changes to source files required.
 """
 
 # ==================== DETECTION ====================
-MODEL_PATH    = "models/yolo11n.pt"
+MODEL_PATH    = "models/yolo11n.onnx"
 CONFIDENCE    = 0.50
 IOU_THRESH    = 0.45
-IMGSZ         = 640          # inference resolution — try 320 for ~4× speedup
+IMGSZ         = 320         # inference resolution — try 320 for ~4× speedup
 TRACK_CLASSES = ["person"]   # None = detect all COCO classes
 
 # Run YOLO inference every N frames; reuse last detections in between.
@@ -16,9 +16,9 @@ DETECTION_SKIP_FRAMES = 2
 
 # ==================== CAMERA ====================
 CAMERA_SOURCE   = "auto"     # "auto" | "picamera2" | device index (0, 1, …)
-FRAME_WIDTH     = 1280
-FRAME_HEIGHT    = 720
-SHOW_FPS        = True
+FRAME_WIDTH     = 640
+FRAME_HEIGHT    = 480
+SHOW_FPS        = False
 CAMERA_THREADED = True       # background capture thread (recommended on Pi)
 CAMERA_ROTATE   = "90CW"     # "none" | "90CW" | "90CCW" | "180"
 
@@ -44,7 +44,7 @@ MOTOR_MAX_STEPS_PER_FRAME = 200  # ≈ 22°
 TRACKING_P_GAIN = 0.4
 
 # Pan/tilt direction inversion (flip if motor moves the wrong way)
-PAN_INVERT  = False
+PAN_INVERT  = True
 TILT_INVERT = True
 
 # ==================== HARDWARE — SENSORS ====================
