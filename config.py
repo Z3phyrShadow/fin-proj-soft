@@ -35,7 +35,7 @@ MOTOR_MAX_STEPS_PER_FRAME = 200  # ≈ 22°
 
 # Pan/tilt direction inversion (flip if motor moves the wrong way)
 PAN_INVERT  = False
-TILT_INVERT = False
+TILT_INVERT = True
 
 # ==================== HARDWARE — SENSORS ====================
 TOF_PORT        = "/dev/ttyAMA0"
