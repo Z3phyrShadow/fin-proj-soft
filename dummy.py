@@ -25,10 +25,29 @@ Run:
 from __future__ import annotations
 import cv2, time, argparse, sys, config
 
-# ── cv2 headless stub ─────────────────────────────────────────────────────────
-for _fn in ("imshow", "waitKey", "destroyAllWindows", "namedWindow", "resizeWindow"):
+# ── cv2 headless stub: set BEFORE importing anything that touches ultralytics ─
+_STUBS = {
+    "imshow":            lambda *a, **k: None,
+    "waitKey":           lambda *a, **k: -1,
+    "namedWindow":       lambda *a, **k: None,
+    "resizeWindow":      lambda *a, **k: None,
+    "destroyWindow":     lambda *a, **k: None,
+    "destroyAllWindows": lambda *a, **k: None,
+    "createTrackbar":    lambda *a, **k: None,
+    "getTrackbarPos":    lambda *a, **k: 0,
+}
+for _fn, _stub in _STUBS.items():
     if not hasattr(cv2, _fn):
-        setattr(cv2, _fn, lambda *a, **k: None if "wait" not in str(a) else -1)
+        setattr(cv2, _fn, _stub)
+
+def _has_display() -> bool:
+    """Return True if cv2 can open a real window."""
+    try:
+        cv2.namedWindow("__test__", cv2.WINDOW_NORMAL)
+        cv2.destroyWindow("__test__")
+        return True
+    except Exception:
+        return False
 
 # ── now safe to import ultralytics-backed modules ─────────────────────────────
 from src.turret.detection.camera   import get_camera
@@ -233,6 +252,14 @@ class DummySystem:
 
     def run(self):
         self.running = True
+
+        # Auto-detect headless if not already forced via --stream
+        if not self._headless:
+            self._headless = not _has_display()
+        if self._headless:
+            print("[DUMMY] Headless — IJKL via stdin (type letter + Enter). View: http://<pi-ip>:5000/")
+            self._start_stdin_thread()
+
         try:
             while self.running:
                 frame = self.camera.read()
@@ -255,6 +282,19 @@ class DummySystem:
             try: cv2.destroyAllWindows()
             except Exception: pass
             print(f"[DUMMY] Done — {self.frame_count} frames")
+
+    def _start_stdin_thread(self):
+        import threading
+        def _read():
+            print("  i=up  k=down  j=left  l=right  r=reset  d=depth  q=quit")
+            try:
+                for line in sys.stdin:
+                    ch = line.strip().lower()[:1]
+                    if not ch: continue
+                    if ch == "q": self.running = False; break
+                    self.handle_key(ord(ch))
+            except Exception: pass
+        threading.Thread(target=_read, daemon=True, name="StdinKbd").start()
 
 
 if __name__ == "__main__":
