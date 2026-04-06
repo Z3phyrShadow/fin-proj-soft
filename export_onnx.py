@@ -15,6 +15,13 @@ Ultralytics loads .onnx files automatically via onnxruntime.
 
 MODEL_PT = "models/yolo11n.pt"
 
+# Headless OpenCV (pi) doesn't have cv2.imshow; ultralytics references it at
+# import time so we stub it before importing ultralytics.
+import cv2
+for _fn in ("imshow", "waitKey", "destroyAllWindows", "namedWindow"):
+    if not hasattr(cv2, _fn):
+        setattr(cv2, _fn, lambda *a, **k: None)
+
 try:
     import onnxruntime  # type: ignore  # noqa: F401
 except ImportError:

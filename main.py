@@ -6,6 +6,12 @@ Main entry point — wires detection, hardware control, and action states.
 import cv2
 import time
 
+# Headless OpenCV builds (Pi) omit cv2.imshow; ultralytics patches it at
+# import time — stub missing functions before any ultralytics import.
+for _fn in ("imshow", "waitKey", "destroyAllWindows", "namedWindow"):
+    if not hasattr(cv2, _fn):
+        setattr(cv2, _fn, lambda *a, **k: None)
+
 import config
 from src.turret.detection.camera   import get_camera
 from src.turret.detection.detector import YOLODetector
