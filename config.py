@@ -42,8 +42,11 @@ TOF_PORT        = "/dev/ttyAMA0"
 TOF_BAUD        = 921600
 TOF_MAX_MM      = 5000    # sensor range ceiling for UI normalisation
 
-SONAR_ECHO_PIN    = 24
-SONAR_TRIGGER_PIN = 23
+SONAR_ECHO_PIN      = 24
+SONAR_TRIGGER_PIN   = 23
+SONAR_MAX_DISTANCE_M = 4.0  # gpiozero DistanceSensor max_distance (metres)
+
+LASER_GPIO_PIN      = 27    # MOSFET gate driving the laser (OutputDevice)
 
 # ==================== ACTION LAYER ====================
 DEFAULT_MODE = "monitor"    # "standby" | "monitor" | "engage" | "abort"

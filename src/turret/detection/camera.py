@@ -89,6 +89,20 @@ class Camera:
         )
         self._picam.configure(config)
         self._picam.start()
+
+        # Enable continuous autofocus (Pi Camera v3 / libcamera)
+        try:
+            import time as _time
+            from libcamera import controls as lc  # type: ignore
+            _time.sleep(1.0)  # let camera settle before enabling AF
+            self._picam.set_controls({
+                "AfMode":  lc.AfModeEnum.Continuous,
+                "AfRange": lc.AfRangeEnum.Normal,
+            })
+            print("[Camera] Autofocus: CONTINUOUS")
+        except Exception:
+            pass  # Not available on older Pi / libcamera builds — fine to skip
+
         self._backend = "picamera2"
         print(f"[Camera] Opened Picamera2 ({self.width}×{self.height})")
 

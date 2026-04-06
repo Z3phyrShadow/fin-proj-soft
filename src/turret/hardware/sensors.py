@@ -122,11 +122,13 @@ class UltrasonicSensor:
         GPIO BCM pin connected to the Trigger pin.
     """
 
-    def __init__(self, echo_pin: int = 24, trigger_pin: int = 23):
-        self._echo_pin    = echo_pin
-        self._trigger_pin = trigger_pin
-        self._sensor      = None
-        self._available   = False
+    def __init__(self, echo_pin: int = 24, trigger_pin: int = 23,
+                 max_distance_m: float = 4.0):
+        self._echo_pin      = echo_pin
+        self._trigger_pin   = trigger_pin
+        self._max_dist      = max_distance_m
+        self._sensor        = None
+        self._available     = False
 
     def start(self) -> None:
         try:
@@ -135,9 +137,11 @@ class UltrasonicSensor:
                 echo=self._echo_pin,
                 trigger=self._trigger_pin,
                 queue_len=3,
+                max_distance=self._max_dist,
             )
             self._available = True
-            print(f"[SONAR] Started — echo={self._echo_pin}, trigger={self._trigger_pin}")
+            print(f"[SONAR] Started — echo={self._echo_pin}, trigger={self._trigger_pin}, "
+                  f"max={self._max_dist*1000:.0f}mm")
         except Exception as exc:
             print(f"[SONAR] Not available ({exc}) — distance will read 0 mm")
             self._available = False
@@ -157,6 +161,71 @@ class UltrasonicSensor:
             except Exception:
                 return 0
         return 0
+
+    @property
+    def available(self) -> bool:
+        return self._available
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+
+class LaserController:
+    """
+    Laser / weapon output via MOSFET on a GPIO pin.
+
+    Uses gpiozero.OutputDevice. Falls back to console mock on non-Pi.
+
+    Parameters
+    ----------
+    pin : int
+        GPIO BCM pin driving the MOSFET gate (default 27).
+    """
+
+    def __init__(self, pin: int = 27):
+        self._pin       = pin
+        self._device    = None
+        self._active    = False
+        self._available = False
+
+    def start(self) -> None:
+        try:
+            from gpiozero import OutputDevice  # type: ignore
+            self._device    = OutputDevice(self._pin, active_high=True, initial_value=False)
+            self._available = True
+            print(f"[LASER] Initialized on GPIO {self._pin}")
+        except Exception as exc:
+            print(f"[LASER] Not available ({exc}) — mock mode")
+
+    def on(self) -> None:
+        if self._active:
+            return
+        self._active = True
+        if self._device:
+            self._device.on()
+        else:
+            print("[LASER MOCK] FIRE")
+
+    def off(self) -> None:
+        if not self._active:
+            return
+        self._active = False
+        if self._device:
+            self._device.off()
+        else:
+            print("[LASER MOCK] SAFE")
+
+    def stop(self) -> None:
+        """Always ensure laser is off on shutdown."""
+        self.off()
+        if self._device:
+            try:
+                self._device.close()
+            except Exception:
+                pass
+
+    @property
+    def is_active(self) -> bool:
+        return self._active
 
     @property
     def available(self) -> bool:

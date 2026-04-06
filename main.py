@@ -10,7 +10,7 @@ import config
 from src.turret.detection.camera   import get_camera
 from src.turret.detection.detector import YOLODetector
 from src.turret.detection.depth    import DepthEstimator
-from src.turret.hardware.sensors   import TOFSensor, UltrasonicSensor
+from src.turret.hardware.sensors   import TOFSensor, UltrasonicSensor, LaserController
 from src.turret.utils.visualizer   import Visualizer
 from src.turret.utils.streamer     import FrameStreamer
 from src.turret.ui.depth_control   import DepthControlUI
@@ -66,9 +66,13 @@ class RakshaqSystem:
         self.sonar = UltrasonicSensor(
             echo_pin=config.SONAR_ECHO_PIN,
             trigger_pin=config.SONAR_TRIGGER_PIN,
+            max_distance_m=config.SONAR_MAX_DISTANCE_M,
         )
         self.tof.start()
         self.sonar.start()
+
+        self.laser = LaserController(pin=config.LASER_GPIO_PIN)
+        self.laser.start()
 
         # ── Phase 2b: Depth ───────────────────────────────────────────────────
         print("\n[INIT] Phase 2b: Depth")
@@ -221,9 +225,15 @@ class RakshaqSystem:
                       f"{'<=' if uses_mm else '>='} {threshold}{unit}) → ENGAGE")
                 self.change_mode(ActionMode.ENGAGE)
                 self._engage_counter = 0
+            # Fire laser only when TOF is the active backend
+            if config.DEPTH_BACKEND == "tof":
+                self.laser.on()
         else:
             self._retreat_counter += 1
             self._engage_counter   = 0
+            # TOF backend: safe the laser as soon as sensor reading retreats
+            if config.DEPTH_BACKEND == "tof":
+                self.laser.off()
             if (self._retreat_counter >= config.DEPTH_RETREAT_FRAMES
                     and current_mode == ActionMode.ENGAGE):
                 print(f"\n[DEPTH] Target retreated → MONITOR")
@@ -285,13 +295,17 @@ class RakshaqSystem:
         if config.SHOW_SENSOR_HUD:
             tof_mm   = self.tof.distance_mm
             sonar_mm = self.sonar.distance_mm
-            cv2.rectangle(frame, (w - 200, 5), (w - 5, 65), (0, 0, 0), -1)
-            tof_col   = (0, 255, 255)
-            sonar_col = (255, 255, 0)
+            cv2.rectangle(frame, (w - 200, 5), (w - 5, 85), (0, 0, 0), -1)
             cv2.putText(frame, f"LASER: {tof_mm}mm",
-                        (w - 190, 30), font, 0.65, tof_col, 2)
+                        (w - 190, 30), font, 0.65, (0, 255, 255), 2)
             cv2.putText(frame, f"SONAR: {sonar_mm}mm",
-                        (w - 190, 58), font, 0.65, sonar_col, 2)
+                        (w - 190, 58), font, 0.65, (255, 255, 0), 2)
+            if self.laser.is_active:
+                cv2.putText(frame, "WEAPON: FIRING",
+                            (w - 190, 83), font, 0.55, (0, 0, 255), 2)
+            else:
+                cv2.putText(frame, "WEAPON: SAFE",
+                            (w - 190, 83), font, 0.55, (0, 255, 0), 2)
 
         # Pan / tilt position (bottom left)
         if config.SHOW_POSITION_INFO:
@@ -413,6 +427,7 @@ class RakshaqSystem:
         print("[CLEANUP] Stopping sensors...")
         self.tof.stop()
         self.sonar.stop()
+        self.laser.stop()   # always safe the laser first
         print("[CLEANUP] Stopping camera...")
         self.camera.release()
         print("[CLEANUP] Resetting turret...")
