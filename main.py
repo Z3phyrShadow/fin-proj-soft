@@ -391,6 +391,13 @@ class RakshaqSystem:
     def run(self):
         print("[SYSTEM] Starting main loop...\n")
         self.running = True
+        self._headless = self._detect_headless()
+
+        if self._headless:
+            print("[SYSTEM] Headless mode — no display detected.")
+            print("[SYSTEM] View stream at http://<pi-ip>:5000/")
+            print("[SYSTEM] Press Ctrl+C to quit.\n")
+            self._start_stdin_keyboard()
 
         try:
             while self.running:
@@ -400,11 +407,12 @@ class RakshaqSystem:
                     break
 
                 annotated = self.process_frame(frame)
-                cv2.imshow("RAKSHAQ", annotated)
 
-                key = cv2.waitKey(1) & 0xFF
-                if not self.handle_keyboard(key):
-                    break
+                if not self._headless:
+                    cv2.imshow("RAKSHAQ", annotated)
+                    key = cv2.waitKey(1) & 0xFF
+                    if not self.handle_keyboard(key):
+                        break
 
                 self.frame_count += 1
 
@@ -432,7 +440,10 @@ class RakshaqSystem:
         self.camera.release()
         print("[CLEANUP] Resetting turret...")
         self.turret.cleanup()
-        cv2.destroyAllWindows()
+        try:
+            cv2.destroyAllWindows()
+        except Exception:
+            pass
         print(f"\n[STATS] Frames: {self.frame_count}")
         print(f"[STATS] Final mode: {self.action_controller.current_mode.value.upper()}")
         print("\n✅ Shutdown complete\n" + "=" * 60)
@@ -440,6 +451,47 @@ class RakshaqSystem:
 
 def main():
     RakshaqSystem().run()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _static_detect_headless() -> bool:
+    """Try opening an OpenCV window; return True if display is unavailable."""
+    try:
+        cv2.namedWindow("__hd_test__", cv2.WINDOW_NORMAL)
+        cv2.destroyWindow("__hd_test__")
+        return False
+    except Exception:
+        return True
+
+
+RakshaqSystem._detect_headless = staticmethod(_static_detect_headless)
+
+
+def _start_stdin_keyboard(self):
+    """Background thread reading single-char commands from stdin when headless."""
+    import threading
+    import sys
+
+    def _reader():
+        print("[KEYBOARD] Headless controls: r=reset  s=scan  d=depth  q=quit")
+        try:
+            for line in sys.stdin:
+                key_char = line.strip().lower()[:1]
+                if not key_char:
+                    continue
+                if key_char == "q":
+                    self.running = False
+                    break
+                self.handle_keyboard(ord(key_char))
+        except Exception:
+            pass
+
+    t = threading.Thread(target=_reader, daemon=True, name="StdinKeyboard")
+    t.start()
+
+
+RakshaqSystem._start_stdin_keyboard = _start_stdin_keyboard
 
 
 if __name__ == "__main__":
