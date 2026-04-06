@@ -11,8 +11,8 @@ TRACK_CLASSES = ["person"]   # None = detect all COCO classes
 
 # ==================== CAMERA ====================
 CAMERA_SOURCE   = "auto"     # "auto" | "picamera2" | device index (0, 1, …)
-FRAME_WIDTH     = 640
-FRAME_HEIGHT    = 480
+FRAME_WIDTH     = 1280
+FRAME_HEIGHT    = 720
 SHOW_FPS        = True
 CAMERA_THREADED = True       # background capture thread (recommended on Pi)
 CAMERA_ROTATE   = "90CW"     # "none" | "90CW" | "90CCW" | "180"
@@ -53,7 +53,7 @@ CENTER_TOLERANCE_X    = 50   # px
 CENTER_TOLERANCE_Y    = 50   # px
 ENGAGEMENT_COOLDOWN   = 2.0  # seconds between recorded engagements
 AUTO_SCAN_ON_NO_TARGET = True
-SCAN_INTERVAL          = 30  # seconds between scans when no target
+SCAN_INTERVAL          = 30  # seconds between auto-scans when no target
 
 # ==================== DISPLAY ====================
 SHOW_MODE_INDICATOR  = True
