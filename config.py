@@ -1,80 +1,94 @@
 """
-Configuration for RAKSHAQ Turret System
-Centralized settings for all modules
+config.py — RAKSHAQ Turret System — Central Configuration
+Modify values here; no changes to source files required.
 """
 
 # ==================== DETECTION ====================
-MODEL_PATH = "models/yolo11n.pt"
-CONFIDENCE = 0.50
-IOU_THRESH = 0.45
-TRACK_CLASSES = ["person"]  # None = detect all COCO classes
-CAMERA_SOURCE = "auto"  # "auto", "picamera2", or device index
-FRAME_WIDTH = 1280
-FRAME_HEIGHT = 720
-SHOW_FPS = True
-CAMERA_THREADED = True   # capture frames in background thread (recommended on Pi)
+MODEL_PATH    = "models/yolo11n.pt"
+CONFIDENCE    = 0.50
+IOU_THRESH    = 0.45
+TRACK_CLASSES = ["person"]   # None = detect all COCO classes
+
+# ==================== CAMERA ====================
+CAMERA_SOURCE   = "auto"     # "auto" | "picamera2" | device index (0, 1, …)
+FRAME_WIDTH     = 640
+FRAME_HEIGHT    = 480
+SHOW_FPS        = True
+CAMERA_THREADED = True       # background capture thread (recommended on Pi)
+CAMERA_ROTATE   = "90CW"     # "none" | "90CW" | "90CCW" | "180"
+
+# ==================== HARDWARE — MOTORS ====================
+STM32_PORT     = "/dev/ttyACM0"   # Nucleo serial port
+STM32_BAUD     = 115200
+
+# Camera field-of-view (Pi Camera v3 with 90° CW rotation: H/V swap)
+# After 90° rotation: effective HFOV ≈ physical VFOV and vice-versa
+CAMERA_HFOV_DEG = 66.0   # degrees horizontal  (tune if tracking overshoots)
+CAMERA_VFOV_DEG = 52.0   # degrees vertical
+
+# Motor step limits (software safety — beyond this, stop commanding)
+PAN_STEP_LIMIT   = 3200  # ≈ 360° in each direction
+TILT_STEP_LIMIT  = 800   # ≈ ±90°
+
+# Max steps sent per frame (prevents violent snap-to-target)
+MOTOR_MAX_STEPS_PER_FRAME = 200  # ≈ 22°
+
+# Pan/tilt direction inversion (flip if motor moves the wrong way)
+PAN_INVERT  = False
+TILT_INVERT = False
+
+# ==================== HARDWARE — SENSORS ====================
+TOF_PORT        = "/dev/ttyAMA0"
+TOF_BAUD        = 921600
+TOF_MAX_MM      = 5000    # sensor range ceiling for UI normalisation
+
+SONAR_ECHO_PIN    = 24
+SONAR_TRIGGER_PIN = 23
 
 # ==================== ACTION LAYER ====================
+DEFAULT_MODE = "monitor"    # "standby" | "monitor" | "engage" | "abort"
 
-# Operating Modes
-DEFAULT_MODE = "monitor"         # "standby", "monitor", "engage", "abort"
-
-# Servo Control
-PAN_SERVO_PIN = 17               # GPIO pin for pan servo
-TILT_SERVO_PIN = 27              # GPIO pin for tilt servo
-SERVO_FREQUENCY = 50             # PWM frequency (Hz)
-SMOOTHING_FACTOR = 0.3           # Movement smoothing (0=instant, 1=no movement)
-
-# Servo Limits
-PAN_MIN_ANGLE = 0                # Minimum pan angle (degrees)
-PAN_MAX_ANGLE = 180              # Maximum pan angle (degrees)
-TILT_MIN_ANGLE = 45              # Minimum tilt angle (degrees)
-TILT_MAX_ANGLE = 135             # Maximum tilt angle (degrees)
-
-# Targeting
-TARGETING_STRATEGY = "combined"  # "closest", "confident", "largest", "combined"
-CENTER_TOLERANCE_X = 50          # Pixels - target considered centered
-CENTER_TOLERANCE_Y = 50          # Pixels
-
-# Engagement
-ENGAGEMENT_COOLDOWN = 2.0        # Seconds between engagements
-AUTO_SCAN_ON_NO_TARGET = True    # Scan when no targets detected
-SCAN_INTERVAL = 30               # Seconds between scans
+TARGETING_STRATEGY    = "combined"
+CENTER_TOLERANCE_X    = 50   # px
+CENTER_TOLERANCE_Y    = 50   # px
+ENGAGEMENT_COOLDOWN   = 2.0  # seconds between recorded engagements
+AUTO_SCAN_ON_NO_TARGET = True
+SCAN_INTERVAL          = 30  # seconds between scans when no target
 
 # ==================== DISPLAY ====================
+SHOW_MODE_INDICATOR  = True
+SHOW_TARGET_RETICLE  = True
+SHOW_POSITION_INFO   = True
+SHOW_SENSOR_HUD      = True   # show TOF + sonar readings on main feed
 
-# Visualization
-SHOW_MODE_INDICATOR = True       # Show current mode on display
-SHOW_TARGET_RETICLE = True       # Show crosshair on selected target
-SHOW_POSITION_INFO = True        # Show pan/tilt angles
+COLOR_TARGET       = (0, 0, 255)
+COLOR_RETICLE      = (0, 255, 255)
+COLOR_TEXT         = (255, 255, 255)
+COLOR_MODE_STANDBY = (128, 128, 128)
+COLOR_MODE_MONITOR = (0, 255, 255)
+COLOR_MODE_ENGAGE  = (0, 0, 255)
+COLOR_MODE_ABORT   = (255, 0, 0)
 
-# Colors (BGR format)
-COLOR_TARGET = (0, 0, 255)       # Red for selected target
-COLOR_RETICLE = (0, 255, 255)    # Yellow crosshair
-COLOR_TEXT = (255, 255, 255)     # White text
-COLOR_MODE_STANDBY = (128, 128, 128)  # Gray
-COLOR_MODE_MONITOR = (0, 255, 255)    # Yellow
-COLOR_MODE_ENGAGE = (0, 0, 255)       # Red
-COLOR_MODE_ABORT = (255, 0, 0)        # Blue
+# ==================== DEPTH / RANGE ====================
+# Backend:
+#   "bbox"       — bounding-box size proxy (no sensors needed, Windows testing)
+#   "tof"        — TOF laser sensor (/dev/ttyAMA0)  [recommended on Pi]
+#   "ultrasonic" — HC-SR04 sonar (GPIO 24/23)
+DEPTH_BACKEND = "tof"
 
-# ==================== DEPTH ====================
+# Threshold in mm (for tof/ultrasonic): engage when distance <= threshold
+# Threshold in %  (for bbox):           engage when closeness >= threshold
+DEPTH_THRESHOLD = 1500   # mm  (≈ 1.5 m)
 
-# Backend: "bbox" (bounding-box size proxy, for testing)
-#          "ir"   (IR laser range sensor, for production)
-DEPTH_BACKEND       = "bbox"
+# Hysteresis
+DEPTH_ENGAGE_FRAMES  = 3    # frames inside threshold → ENGAGE
+DEPTH_RETREAT_FRAMES = 10   # frames outside threshold → MONITOR
 
-# IR sensor max range in cm (used only when DEPTH_BACKEND = "ir")
-DEPTH_IR_MAX_CM     = 500.0
+# Enable depth trigger on startup (toggle at runtime with 'd' key)
+DEPTH_ENABLED  = True
+SHOW_DEPTH_UI  = True
 
-# Proximity % (0–100) above which the turret auto-engages
-DEPTH_THRESHOLD     = 40
-
-# Hysteresis — prevents flickering at the boundary
-DEPTH_ENGAGE_FRAMES  = 3    # consecutive frames above threshold → switch to ENGAGE
-DEPTH_RETREAT_FRAMES = 10   # consecutive frames below threshold → return to MONITOR
-
-# Enable depth trigger module (can be toggled at runtime with 'd' key)
-DEPTH_ENABLED       = False
-
-# Show the floating depth control window
-SHOW_DEPTH_UI       = False
+# ==================== STREAMING ====================
+ENABLE_STREAM = True
+STREAM_PORT   = 5000
+STREAM_QUALITY = 70   # JPEG quality 0–100

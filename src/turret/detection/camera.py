@@ -41,14 +41,23 @@ class Camera:
         Requested capture resolution and frame-rate.
     """
 
-    def __init__(self, source="auto", width=1280, height=720, fps=30):
+    ROTATE_CODES = {
+        "90cw":  cv2.ROTATE_90_CLOCKWISE,
+        "90ccw": cv2.ROTATE_90_COUNTERCLOCKWISE,
+        "180":   cv2.ROTATE_180,
+        "none":  None,
+    }
+
+    def __init__(self, source="auto", width=1280, height=720, fps=30,
+                 rotate: str = "none"):
         self.source = source
         self.width  = width
         self.height = height
         self.fps    = fps
+        self._rotate_code = self.ROTATE_CODES.get(rotate.lower())
 
-        self._cap  = None   # OpenCV capture object
-        self._picam = None  # Picamera2 object
+        self._cap   = None   # OpenCV capture object
+        self._picam = None   # Picamera2 object
         self._backend: str = ""
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -111,13 +120,17 @@ class Camera:
         if self._backend == "picamera2":
             # XRGB8888 stores pixels as B,G,R,X in memory.
             # Slice to drop X channel; ascontiguousarray ensures OpenCV-compatible memory layout.
-            return np.ascontiguousarray(self._picam.capture_array()[:, :, :3])
-
-        if self._backend == "opencv":
+            frame = np.ascontiguousarray(self._picam.capture_array()[:, :, :3])
+        elif self._backend == "opencv":
             ok, frame = self._cap.read()
-            return frame if ok else None
+            frame = frame if ok else None
+        else:
+            raise RuntimeError("Camera is not open. Call open() first.")
 
-        raise RuntimeError("Camera is not open. Call open() first.")
+        if frame is not None and self._rotate_code is not None:
+            frame = cv2.rotate(frame, self._rotate_code)
+
+        return frame
 
     # ──────────────────────────────────────────────────────────────────────────
     def close(self) -> None:
@@ -154,18 +167,18 @@ class Camera:
 
 
 def get_camera(source="auto", width=1280, height=720, fps=30,
-               threaded: bool = False):
+               threaded: bool = False, rotate: str = "none"):
     """
     Factory — creates and opens a Camera (or ThreadedCamera).
 
     Parameters
     ----------
     threaded : bool
-        If True, wraps the camera in a background capture thread so
-        the main loop always gets the latest frame without blocking.
-        Recommended on Raspberry Pi where picamera2 read latency is high.
+        Wrap in background capture thread (recommended on Pi).
+    rotate : str
+        "none" | "90CW" | "90CCW" | "180"
     """
-    cam = Camera(source=source, width=width, height=height, fps=fps)
+    cam = Camera(source=source, width=width, height=height, fps=fps, rotate=rotate)
     if threaded:
         cam = ThreadedCamera(cam)
     cam.open()

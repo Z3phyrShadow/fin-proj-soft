@@ -1,206 +1,133 @@
 """
-Turret Controller - Servo/Motor Control
-Platform-aware GPIO control for pan/tilt servos
+controller.py — TurretController backed by STM32 stepper motors.
+
+Motor math (1/16 microstepping):
+    400 steps = 45°  →  8.888 steps/degree
+
+Tracking flow:
+    pixel error → degrees → steps → X/Y serial command to STM32
+
+Pan:  positive X = right,   negative X = left
+Tilt: positive Y = up,      negative Y = down
 """
 
+from __future__ import annotations
 import time
-from typing import Tuple
-
-# Platform-aware GPIO import
-try:
-    import RPi.GPIO as GPIO
-    GPIO_AVAILABLE = True
-    print("[TURRET] Real GPIO detected (Raspberry Pi)")
-except (ImportError, RuntimeError):
-    # Mock GPIO for development/testing
-    class MockGPIO:
-        BCM = "BCM"
-        OUT = "OUT"
-        
-        @staticmethod
-        def setmode(mode): pass
-        
-        @staticmethod
-        def setwarnings(flag): pass
-        
-        @staticmethod
-        def setup(pin, mode): 
-            print(f"[MOCK GPIO] Setup pin {pin} as {mode}")
-        
-        @staticmethod
-        def cleanup(pins=None): 
-            print(f"[MOCK GPIO] Cleanup {pins}")
-        
-        class PWM:
-            def __init__(self, pin, freq):
-                self.pin = pin
-                print(f"[MOCK GPIO] PWM on pin {pin} @ {freq}Hz")
-            
-            def start(self, duty): pass
-            
-            def ChangeDutyCycle(self, duty):
-                print(f"[MOCK GPIO] Pin {self.pin} duty: {duty:.1f}%")
-            
-            def stop(self): pass
-    
-    GPIO = MockGPIO()
-    GPIO_AVAILABLE = False
-    print("[TURRET] Mock GPIO (development mode)")
+import config
+from src.turret.hardware.stm32 import STM32Controller, STEPS_PER_DEGREE
 
 
 class TurretController:
     """
-    Controls pan and tilt servos for turret movement
-    
-    Coordinate system:
-    - Pan: 0° (left) to 180° (right), 90° = center
-    - Tilt: 45° (down) to 135° (up), 90° = center
+    High-level turret controller: converts vision pixel errors into
+    STM32 step commands for pan/tilt stepper motors.
+
+    Parameters
+    ----------
+    stm32_port : str
+        Serial port for the STM32 Nucleo.
+    stm32_baud : int
+        Baud rate.
+    hfov_deg : float
+        Horizontal field-of-view of the camera (degrees).
+    vfov_deg : float
+        Vertical field-of-view of the camera (degrees).
+    pan_invert : bool
+        Flip pan direction if wiring is reversed.
+    tilt_invert : bool
+        Flip tilt direction if wiring is reversed.
     """
-    
+
     def __init__(
         self,
-        pan_pin: int = 17,
-        tilt_pin: int = 27,
-        servo_frequency: int = 50,
-        smoothing_factor: float = 0.3
+        stm32_port: str   = "/dev/ttyACM0",
+        stm32_baud: int   = 115200,
+        hfov_deg:  float  = 66.0,
+        vfov_deg:  float  = 52.0,
+        pan_invert:  bool = False,
+        tilt_invert: bool = False,
     ):
-        """Initialize turret controller"""
-        self.pan_pin = pan_pin
-        self.tilt_pin = tilt_pin
-        self.servo_frequency = servo_frequency
-        self.smoothing_factor = smoothing_factor
-        
-        # Current positions (degrees)
-        self.pan_angle = 90.0
-        self.tilt_angle = 90.0
-        
-        # Servo limits
-        self.pan_min = 0
-        self.pan_max = 180
-        self.tilt_min = 45
-        self.tilt_max = 135
-        
-        # Setup GPIO
-        self._setup_gpio()
-        
-        # Center position
-        self.reset()
-        
-        print(f"[TURRET] Initialized (Pan: GPIO{pan_pin}, Tilt: GPIO{tilt_pin})")
-    
-    def _setup_gpio(self):
-        """Initialize GPIO pins and PWM"""
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setwarnings(False)
-        
-        GPIO.setup(self.pan_pin, GPIO.OUT)
-        GPIO.setup(self.tilt_pin, GPIO.OUT)
-        
-        self.pan_pwm = GPIO.PWM(self.pan_pin, self.servo_frequency)
-        self.tilt_pwm = GPIO.PWM(self.tilt_pin, self.servo_frequency)
-        
-        self.pan_pwm.start(0)
-        self.tilt_pwm.start(0)
-    
-    def _angle_to_duty_cycle(self, angle: float) -> float:
-        """Convert angle (0-180°) to PWM duty cycle (2-12%)"""
-        angle = max(0, min(180, angle))
-        return 2.0 + (angle / 180.0) * 10.0
-    
-    def set_pan(self, angle: float):
-        """Set absolute pan angle"""
-        angle = max(self.pan_min, min(self.pan_max, angle))
-        duty = self._angle_to_duty_cycle(angle)
-        
-        self.pan_pwm.ChangeDutyCycle(duty)
-        time.sleep(0.015)
-        self.pan_pwm.ChangeDutyCycle(0)
-        
-        self.pan_angle = angle
-    
-    def set_tilt(self, angle: float):
-        """Set absolute tilt angle"""
-        angle = max(self.tilt_min, min(self.tilt_max, angle))
-        duty = self._angle_to_duty_cycle(angle)
-        
-        self.tilt_pwm.ChangeDutyCycle(duty)
-        time.sleep(0.015)
-        self.tilt_pwm.ChangeDutyCycle(0)
-        
-        self.tilt_angle = angle
-    
-    def adjust(self, pan_delta: float, tilt_delta: float):
-        """Adjust position by delta angles with smoothing"""
-        pan_delta *= self.smoothing_factor
-        tilt_delta *= self.smoothing_factor
-        
-        new_pan = self.pan_angle + pan_delta
-        new_tilt = self.tilt_angle + tilt_delta
-        
-        self.set_pan(new_pan)
-        self.set_tilt(new_tilt)
-    
-    def track_target(self, target_cx: int, target_cy: int, frame_width: int, frame_height: int):
+        self._stm32       = STM32Controller(port=stm32_port, baud=stm32_baud)
+        self._hfov        = hfov_deg
+        self._vfov        = vfov_deg
+        self._pan_inv     = -1 if pan_invert  else 1
+        self._tilt_inv    = -1 if tilt_invert else 1
+        print(f"[TURRET] Initialized (STM32 on {stm32_port})")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    def track_target(
+        self,
+        target_cx: int,
+        target_cy: int,
+        frame_width: int,
+        frame_height: int,
+    ) -> None:
         """
-        Calculate and apply movement to center target in frame
-        
-        Args:
-            target_cx: Target center X coordinate
-            target_cy: Target center Y coordinate  
-            frame_width: Frame width in pixels
-            frame_height: Frame height in pixels
+        Compute pixel error from frame centre and send motor commands.
+
+        Error → degrees → steps → X/Y command.
         """
-        # Calculate error from frame center
-        frame_center_x = frame_width / 2
-        frame_center_y = frame_height / 2
-        
-        error_x = target_cx - frame_center_x
-        error_y = target_cy - frame_center_y
-        
-        # Convert pixel error to angle adjustment
-        # Assume ~60° horizontal FOV, ~45° vertical FOV
-        pan_adjustment = (error_x / frame_width) * 30   # ±15°
-        tilt_adjustment = -(error_y / frame_height) * 20 # ±10° (Y inverted)
-        
-        self.adjust(pan_adjustment, tilt_adjustment)
-    
-    def reset(self):
-        """Reset turret to center position"""
+        error_x = target_cx - frame_width  // 2
+        error_y = target_cy - frame_height // 2
+
+        # Degrees to move
+        deg_x = (error_x / frame_width)  * self._hfov
+        deg_y = (error_y / frame_height) * self._vfov
+
+        # Steps (tilt Y is negated: error_y > 0 means target is below → tilt up)
+        steps_x = int(deg_x  * STEPS_PER_DEGREE) * self._pan_inv
+        steps_y = int(-deg_y * STEPS_PER_DEGREE) * self._tilt_inv
+
+        # Max steps per frame to avoid overshooting
+        max_step = config.MOTOR_MAX_STEPS_PER_FRAME
+        steps_x = max(-max_step, min(max_step, steps_x))
+        steps_y = max(-max_step, min(max_step, steps_y))
+
+        self._stm32.pan(steps_x)
+        self._stm32.tilt(steps_y)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    @staticmethod
+    def is_centered(
+        target_cx: int,
+        target_cy: int,
+        frame_width: int,
+        frame_height: int,
+        tolerance_x: int = 50,
+        tolerance_y: int = 50,
+    ) -> bool:
+        """Return True if target is within tolerance pixels of frame centre."""
+        return (
+            abs(target_cx - frame_width  // 2) < tolerance_x
+            and abs(target_cy - frame_height // 2) < tolerance_y
+        )
+
+    def get_position(self) -> tuple[float, float]:
+        """Return (pan_deg, tilt_deg) relative to home position."""
+        return self._stm32.get_position_deg()
+
+    # ──────────────────────────────────────────────────────────────────────────
+    def reset(self) -> None:
+        """Return motors to home position."""
         print("[TURRET] Resetting to center")
-        self.set_pan(90)
-        self.set_tilt(90)
-        time.sleep(0.5)
-    
-    def scan_area(self):
-        """Perform horizontal scan sweep"""
+        self._stm32.reset()
+
+    def scan_area(self) -> None:
+        """Simple scan sweep — pan ±45° from current position."""
         print("[TURRET] Scanning area...")
-        for angle in [60, 90, 120, 90]:
-            self.set_pan(angle)
-            time.sleep(0.5)
-    
-    def emergency_stop(self):
-        """Emergency stop - return to center"""
+        scan_steps = int(45 * STEPS_PER_DEGREE)   # 45 degrees
+        self._stm32.pan(scan_steps)
+        time.sleep(0.8)
+        self._stm32.pan(-scan_steps * 2)
+        time.sleep(0.8)
+        self._stm32.pan(scan_steps)               # return to centre estimate
+
+    def emergency_stop(self) -> None:
+        """Emergency stop — return home."""
         print("[TURRET] ⚠️ EMERGENCY STOP")
         self.reset()
-    
-    def get_position(self) -> Tuple[float, float]:
-        """Get current (pan, tilt) angles"""
-        return (self.pan_angle, self.tilt_angle)
-    
-    def is_centered(self, target_cx: int, target_cy: int, 
-                    frame_width: int, frame_height: int,
-                    tolerance_x: int = 50, tolerance_y: int = 50) -> bool:
-        """Check if target is centered within tolerance"""
-        frame_center_x = frame_width / 2
-        frame_center_y = frame_height / 2
-        
-        return (abs(target_cx - frame_center_x) < tolerance_x and 
-                abs(target_cy - frame_center_y) < tolerance_y)
-    
-    def cleanup(self):
-        """Clean up GPIO resources"""
+
+    def cleanup(self) -> None:
+        """Release resources."""
         print("[TURRET] Cleaning up...")
-        self.reset()
-        self.pan_pwm.stop()
-        self.tilt_pwm.stop()
-        GPIO.cleanup([self.pan_pin, self.tilt_pin])
+        self._stm32.cleanup()
