@@ -117,13 +117,17 @@ class STM32Controller:
         self._tilt_steps = new_pos
 
     # ──────────────────────────────────────────────────────────────────────────
-    def reset(self) -> None:
-        """Return to home (0, 0) by sending the inverse of current position."""
-        print("[STM32] Returning to home position")
+    def reset(self, reset_tilt: bool = False) -> None:
+        """
+        Return pan to home.  Tilt is left in place by default because
+        the physical "ready" elevation is wherever the motor last stopped.
+        Pass reset_tilt=True to also drive Y back to 0.
+        """
+        print("[STM32] Pan → home" + (", Tilt → home" if reset_tilt else ""))
         if self._pan_steps != 0:
             self.send(f"X{-self._pan_steps}")
             self._pan_steps = 0
-        if self._tilt_steps != 0:
+        if reset_tilt and self._tilt_steps != 0:
             self.send(f"Y{-self._tilt_steps}")
             self._tilt_steps = 0
 

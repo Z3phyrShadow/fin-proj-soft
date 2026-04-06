@@ -108,9 +108,9 @@ class TurretController:
 
     # ──────────────────────────────────────────────────────────────────────────
     def reset(self) -> None:
-        """Return motors to home position."""
-        print("[TURRET] Resetting to center")
-        self._stm32.reset()
+        """Return pan to home; tilt stays at current elevation."""
+        print("[TURRET] Pan → home (tilt held)")
+        self._stm32.reset(reset_tilt=False)
 
     def scan_area(self) -> None:
         """Simple scan sweep — pan ±45° from current position."""
