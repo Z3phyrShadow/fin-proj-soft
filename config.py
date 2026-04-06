@@ -38,6 +38,11 @@ TILT_STEP_LIMIT  = 800   # ≈ ±90°
 # Max steps sent per frame (prevents violent snap-to-target)
 MOTOR_MAX_STEPS_PER_FRAME = 200  # ≈ 22°
 
+# Proportional gain for motor tracking (0.0–1.0).
+# 1.0 = immediately correct full error each frame → oscillation.
+# 0.3–0.5 = move a fraction each frame → smoother convergence.
+TRACKING_P_GAIN = 0.4
+
 # Pan/tilt direction inversion (flip if motor moves the wrong way)
 PAN_INVERT  = False
 TILT_INVERT = True
@@ -56,7 +61,7 @@ LASER_GPIO_PIN      = 27    # MOSFET gate driving the laser (OutputDevice)
 # ==================== ACTION LAYER ====================
 DEFAULT_MODE = "monitor"    # "standby" | "monitor" | "engage" | "abort"
 
-TARGETING_STRATEGY    = "combined"
+TARGETING_STRATEGY    = "closest" # closest to frame center
 CENTER_TOLERANCE_X    = 50   # px
 CENTER_TOLERANCE_Y    = 50   # px
 ENGAGEMENT_COOLDOWN   = 2.0  # seconds between recorded engagements

@@ -74,9 +74,12 @@ class TurretController:
         deg_x = (error_x / frame_width)  * self._hfov
         deg_y = (error_y / frame_height) * self._vfov
 
-        # Steps (tilt Y is negated: error_y > 0 means target is below → tilt up)
-        steps_x = int(deg_x  * STEPS_PER_DEGREE) * self._pan_inv
-        steps_y = int(-deg_y * STEPS_PER_DEGREE) * self._tilt_inv
+        # Proportional gain — correct only a fraction of the error per frame
+        # to prevent oscillation (tune TRACKING_P_GAIN in config.py)
+        p = config.TRACKING_P_GAIN
+
+        steps_x = int(deg_x  * STEPS_PER_DEGREE * p) * self._pan_inv
+        steps_y = int(-deg_y * STEPS_PER_DEGREE * p) * self._tilt_inv
 
         # Max steps per frame to avoid overshooting
         max_step = config.MOTOR_MAX_STEPS_PER_FRAME
