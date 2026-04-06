@@ -5,8 +5,8 @@ description = "Raspberry Pi automatic turret — YOLOv11n detection software"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "ultralytics>=8.3.0",    # YOLOv11 (downloads yolo11n.pt automatically)
-    "opencv-python>=4.9.0",  # camera capture + display window
+    "ultralytics>=8.3.0",
+    "opencv-python-headless>=4.9.0",
     "numpy>=1.24.0",
     "pyserial>=3.5",         # STM32 + TOF UART comms
     "flask>=3.0",            # MJPEG web stream
