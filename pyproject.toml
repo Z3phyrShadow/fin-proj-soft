@@ -8,9 +8,11 @@ dependencies = [
     "ultralytics>=8.3.0",
     "opencv-python-headless>=4.9.0",
     "numpy>=1.24.0",
-    "pyserial>=3.5",         # STM32 + TOF UART comms
-    "flask>=3.0",            # MJPEG web stream
-    "onnxruntime>=1.18",     # faster inference on Pi ARM CPU
+    "pyserial>=3.5",
+    "flask>=3.0",
+    "onnxruntime>=1.18",
+    "onnx>=1.12.0,<2.0.0",
+    "onnxslim>=0.1.71",
 ]
 
 [tool.uv]
