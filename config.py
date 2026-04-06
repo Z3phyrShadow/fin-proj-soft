@@ -7,7 +7,12 @@ Modify values here; no changes to source files required.
 MODEL_PATH    = "models/yolo11n.pt"
 CONFIDENCE    = 0.50
 IOU_THRESH    = 0.45
+IMGSZ         = 640          # inference resolution — try 320 for ~4× speedup
 TRACK_CLASSES = ["person"]   # None = detect all COCO classes
+
+# Run YOLO inference every N frames; reuse last detections in between.
+# 1 = every frame (slowest), 2 = every other frame, 3 = every 3rd, etc.
+DETECTION_SKIP_FRAMES = 2
 
 # ==================== CAMERA ====================
 CAMERA_SOURCE   = "auto"     # "auto" | "picamera2" | device index (0, 1, …)
@@ -81,7 +86,7 @@ DEPTH_BACKEND = "tof"
 
 # Threshold in mm (for tof/ultrasonic): engage when distance <= threshold
 # Threshold in %  (for bbox):           engage when closeness >= threshold
-DEPTH_THRESHOLD = 1500   # mm  (≈ 1.5 m)
+DEPTH_THRESHOLD = 2500   # mm  (≈ 2.5 m)
 
 # Hysteresis
 DEPTH_ENGAGE_FRAMES  = 3    # frames inside threshold → ENGAGE

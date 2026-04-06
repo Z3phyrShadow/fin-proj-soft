@@ -44,6 +44,7 @@ class RakshaqSystem:
             model_path=config.MODEL_PATH,
             confidence=config.CONFIDENCE,
             iou_thresh=config.IOU_THRESH,
+            imgsz=config.IMGSZ,
             track_classes=config.TRACK_CLASSES,
         )
 
@@ -158,8 +159,10 @@ class RakshaqSystem:
     def process_frame(self, frame):
         """Run full detection + action pipeline on one frame."""
 
-        # Detection
-        detections = self.detector.detect(frame)
+        # Detection — only run YOLO every DETECTION_SKIP_FRAMES frames
+        if self.frame_count % max(config.DETECTION_SKIP_FRAMES, 1) == 0:
+            self._last_detections = self.detector.detect(frame)
+        detections = getattr(self, "_last_detections", [])
 
         # Target selection
         target = self.target_selector.select_target(detections)
