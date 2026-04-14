@@ -63,12 +63,13 @@ class RakshaqSystem:
         print("-" * 60)
 
         self.turret = TurretController(
-            stm32_port  = config.STM32_PORT,
-            stm32_baud  = config.STM32_BAUD,
-            hfov_deg    = config.CAMERA_HFOV_DEG,
-            vfov_deg    = config.CAMERA_VFOV_DEG,
-            pan_invert  = config.PAN_INVERT,
-            tilt_invert = config.TILT_INVERT,
+            stm32_port    = config.STM32_PORT,
+            stm32_baud    = config.STM32_BAUD,
+            hfov_deg      = config.CAMERA_HFOV_DEG,
+            vfov_deg      = config.CAMERA_VFOV_DEG,
+            pan_invert    = config.PAN_INVERT,
+            tilt_invert   = config.TILT_INVERT,
+            camera_rotate = config.CAMERA_ROTATE,
         )
 
         self.tof   = TOFSensor(port=config.TOF_PORT, baud=config.TOF_BAUD)

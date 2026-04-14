@@ -43,7 +43,11 @@ MOTOR_MAX_STEPS_PER_FRAME = 200  # ≈ 22°
 # 0.3–0.5 = move a fraction each frame → smoother convergence.
 TRACKING_P_GAIN = 0.4
 
-# Pan/tilt direction inversion (flip if motor moves the wrong way)
+# Pan/tilt direction inversion (flip if motor moves the wrong way).
+# NOTE: These flags now only control motor wiring direction — axis
+# swapping due to camera rotation is handled automatically.
+# If tracking still moves the wrong way after the rotation fix,
+# toggle one or both of these.
 PAN_INVERT  = True
 TILT_INVERT = True
 
