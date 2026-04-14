@@ -106,6 +106,11 @@ class Tracker:
         self._search_dir: int   = 1         # +1 = sweep right, -1 = sweep left
         self._search_steps: int = 0         # cumulative search steps
 
+        # Step accumulator to avoid spamming the STM32 with micro-steps
+        self._acc_pan_steps: float  = 0.0
+        self._acc_tilt_steps: float = 0.0
+        self._min_chunk: int        = 20
+
         # ── Target history (for velocity prediction) ─────────────────────────
         self._history: deque[tuple[float, int, int]] = deque(
             maxlen=predict_window
@@ -188,6 +193,8 @@ class Tracker:
 
     def home(self) -> None:
         """Send pan motor home (tilt held)."""
+        self._acc_pan_steps = 0.0
+        self._acc_tilt_steps = 0.0
         self._stm32.reset(reset_tilt=False)
 
     def get_position(self) -> tuple[float, float]:
@@ -197,6 +204,30 @@ class Tracker:
     def cleanup(self) -> None:
         """Release hardware resources."""
         self._stm32.cleanup()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    #  Motor abstraction
+    # ══════════════════════════════════════════════════════════════════════════
+
+    def _flush_steps(self, pan_steps_delta: float, tilt_steps_delta: float) -> None:
+        """
+        Accumulates fractional/small steps to prevent spamming the STM32 controller 
+        with tiny moves that get eaten by deadbands or reset acceleration profiles.
+        """
+        self._acc_pan_steps  += pan_steps_delta
+        self._acc_tilt_steps += tilt_steps_delta
+
+        if abs(self._acc_pan_steps) >= self._min_chunk:
+            send_pan = int(self._acc_pan_steps)
+            if abs(send_pan) > 0:
+                self._stm32.pan(send_pan)
+                self._acc_pan_steps -= send_pan
+
+        if abs(self._acc_tilt_steps) >= self._min_chunk:
+            send_tilt = int(self._acc_tilt_steps)
+            if abs(send_tilt) > 0:
+                self._stm32.tilt(send_tilt)
+                self._acc_tilt_steps -= send_tilt
 
     # ══════════════════════════════════════════════════════════════════════════
     #  State machine internals
@@ -254,8 +285,7 @@ class Tracker:
         pan_steps  = max(-self._max_steps, min(self._max_steps, pan_steps))
         tilt_steps = max(-self._max_steps, min(self._max_steps, tilt_steps))
 
-        self._stm32.pan(pan_steps)
-        self._stm32.tilt(tilt_steps)
+        self._flush_steps(pan_steps, tilt_steps)
 
         return self._state
 
@@ -341,10 +371,7 @@ class Tracker:
         pan_steps  = max(-self._max_steps // 2, min(self._max_steps // 2, pan_steps))
         tilt_steps = max(-self._max_steps // 2, min(self._max_steps // 2, tilt_steps))
 
-        if abs(pan_steps) > 0:
-            self._stm32.pan(pan_steps)
-        if abs(tilt_steps) > 0:
-            self._stm32.tilt(tilt_steps)
+        self._flush_steps(pan_steps, tilt_steps)
 
     # ──────────────────────────────────────────────────────────────────────────
     def _guess_search_direction(self) -> int:
@@ -378,7 +405,7 @@ class Tracker:
             # Double the sweep distance for subsequent legs so it fully crosses the center tracking point
             self._search_sweep_limit = int(180 * STEPS_PER_DEGREE)
 
-        self._stm32.pan(steps)
+        self._flush_steps(steps, 0)
 
     # ──────────────────────────────────────────────────────────────────────────
     def scan_area(self) -> None:
