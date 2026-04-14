@@ -284,6 +284,7 @@ class Tracker:
                 self._state = TrackState.SEARCHING
                 self._search_dir = self._guess_search_direction()
                 self._search_steps = 0
+                self._search_sweep_limit = int(90 * STEPS_PER_DEGREE)
                 print("[TRACKER] Chase timeout → SEARCHING")
 
         # ── SEARCHING: systematic pan sweep ──────────────────────────────────
@@ -362,18 +363,20 @@ class Tracker:
         """
         Slow pan sweep in the predicted direction.
 
-        Reverses direction when the pan limit is approached.
+        Reverses direction when the pan limit is approached, and sweeps
+        back across the arc.
         """
-        sweep_speed = 40   # steps per frame (slow sweep ≈ 4.5°/frame)
-        max_sweep_steps = int(90 * STEPS_PER_DEGREE)  # ±90° from start
+        sweep_speed = 15   # Much slower step rate (was 40). ~1.7°/frame
 
         steps = sweep_speed * self._search_dir
         self._search_steps += abs(steps)
 
-        if self._search_steps > max_sweep_steps:
+        if self._search_steps > getattr(self, '_search_sweep_limit', int(90 * STEPS_PER_DEGREE)):
             # Reverse direction
             self._search_dir *= -1
             self._search_steps = 0
+            # Double the sweep distance for subsequent legs so it fully crosses the center tracking point
+            self._search_sweep_limit = int(180 * STEPS_PER_DEGREE)
 
         self._stm32.pan(steps)
 
