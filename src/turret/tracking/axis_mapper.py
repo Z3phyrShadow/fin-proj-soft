@@ -83,24 +83,24 @@ class AxisMapper:
         """
         rot = self._rot
 
-        if rot == "90cw":
-            # sensor_X = screen_Y,  sensor_Y = -screen_X
-            pan_deg  = (error_y  / frame_h) * self._vfov
-            tilt_deg = (-error_x / frame_w) * self._hfov
-        elif rot == "90ccw":
-            # sensor_X = -screen_Y, sensor_Y = screen_X
-            pan_deg  = (-error_y / frame_h) * self._vfov
-            tilt_deg = (error_x  / frame_w) * self._hfov
-        elif rot == "180":
-            # sensor_X = -screen_X, sensor_Y = -screen_Y
-            pan_deg  = (-error_x / frame_w) * self._hfov
-            tilt_deg = (-error_y / frame_h) * self._vfov
+        # When the camera is mounted sideways and software-rotated, the physical 
+        # horizontal FOV and vertical FOV simply swap roles.
+        # But screen_X is ALWAYS left/right (pan), and screen_Y is ALWAYS up/down (tilt)
+        # in the final post-rotation displayed image.
+        
+        if rot in ("90cw", "90ccw"):
+            # The physical vertical bounds span the horizontal plane
+            eff_hfov = self._vfov
+            eff_vfov = self._hfov
         else:
-            pan_deg  = (error_x / frame_w) * self._hfov
-            tilt_deg = (error_y / frame_h) * self._vfov
+            eff_hfov = self._hfov
+            eff_vfov = self._vfov
 
-        # Tilt convention: positive error_y = target below → need to tilt
-        # DOWN.  STM32 convention: positive Y = UP.  So negate.
+        pan_deg  = (error_x / frame_w) * eff_hfov
+        tilt_deg = (error_y / frame_h) * eff_vfov
+
+        # cv2 Y+ is DOWN. To follow a target going down, we must pitch DOWN.
+        # STM32 Y+ is UP. So an error_y > 0 (down) requires a negative tilt degree.
         tilt_deg = -tilt_deg
 
         # Apply wiring inversion
