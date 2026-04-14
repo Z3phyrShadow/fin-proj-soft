@@ -83,28 +83,32 @@ class Camera:
                 "Install it with: sudo apt install python3-picamera2"
             )
 
-        self._picam   = Picamera2()
-        config        = self._picam.create_preview_configuration(
-            main={"size": (self.width, self.height), "format": "XRGB8888"}
+        self._picam = Picamera2()
+        config      = self._picam.create_preview_configuration(
+            main={"size": (self.width, self.height), "format": "RGB888"},
+        buffer_count=2,
+        controls={
+                "AeEnable":  True,
+                "AwbEnable": True,
+            },
         )
         self._picam.configure(config)
         self._picam.start()
 
-        # Enable continuous autofocus (Pi Camera v3 / libcamera)
         try:
             import time as _time
             from libcamera import controls as lc  # type: ignore
-            _time.sleep(1.0)  # let camera settle before enabling AF
+            _time.sleep(0.5)
             self._picam.set_controls({
                 "AfMode":  lc.AfModeEnum.Continuous,
                 "AfRange": lc.AfRangeEnum.Normal,
             })
             print("[Camera] Autofocus: CONTINUOUS")
         except Exception:
-            pass  # Not available on older Pi / libcamera builds — fine to skip
+            pass
 
         self._backend = "picamera2"
-        print(f"[Camera] Opened Picamera2 ({self.width}×{self.height})")
+        print(f"[Camera] Opened Picamera2 ({self.width}×{self.height}, RGB888, 2-buffer)")
 
     def _open_opencv(self, device: int) -> None:
         self._cap = cv2.VideoCapture(device)
@@ -116,6 +120,7 @@ class Camera:
         self._cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self.width)
         self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         self._cap.set(cv2.CAP_PROP_FPS,          self.fps)
+        self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         self._backend = "opencv"
         actual_w = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         actual_h = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -123,18 +128,9 @@ class Camera:
 
     # ──────────────────────────────────────────────────────────────────────────
     def read(self) -> np.ndarray | None:
-        """
-        Read a single frame.
-
-        Returns
-        -------
-        numpy.ndarray
-            BGR frame (OpenCV-compatible), or None if no frame was captured.
-        """
         if self._backend == "picamera2":
-            # XRGB8888 stores pixels as B,G,R,X in memory.
-            # Slice to drop X channel; ascontiguousarray ensures OpenCV-compatible memory layout.
-            frame = np.ascontiguousarray(self._picam.capture_array()[:, :, :3])
+            frame = self._picam.capture_array()
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         elif self._backend == "opencv":
             ok, frame = self._cap.read()
             frame = frame if ok else None
@@ -214,11 +210,12 @@ class ThreadedCamera:
 
     def __init__(self, camera: Camera):
         import threading
-        self._camera  = camera
-        self._frame   = None
-        self._lock    = threading.Lock()
-        self._running = False
-        self._thread  = None
+        self._camera   = camera
+        self._frame    = None
+        self._lock     = threading.Lock()
+        self._running  = False
+        self._thread   = None
+        self._ready    = threading.Event()
         self._threading = threading
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -229,11 +226,8 @@ class ThreadedCamera:
             target=self._capture_loop, daemon=True, name="CameraThread"
         )
         self._thread.start()
-        # Wait for the first frame before returning
-        import time
-        deadline = time.time() + 5.0
-        while self._frame is None and time.time() < deadline:
-            time.sleep(0.01)
+        if not self._ready.wait(timeout=5.0):
+            print("[Camera] WARNING: first frame timed out — check camera connection")
         print(f"[Camera] Threaded capture started ({self._camera.backend})")
 
     def _capture_loop(self) -> None:
@@ -242,11 +236,12 @@ class ThreadedCamera:
             if frame is not None:
                 with self._lock:
                     self._frame = frame
+                self._ready.set()
 
     # ──────────────────────────────────────────────────────────────────────────
     def read(self) -> np.ndarray | None:
         with self._lock:
-            return self._frame
+            return self._frame.copy() if self._frame is not None else None
 
     def release(self) -> None:
         self._running = False

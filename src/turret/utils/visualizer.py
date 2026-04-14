@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import time
 from collections import deque
-from typing import Sequence
+from turtle import color
+from typing import Sequence, Optional
 
 import cv2
 import numpy as np
@@ -106,8 +107,9 @@ class Visualizer:
     # ──────────────────────────────────────────────────────────────────────────
     def draw(
         self,
-        frame:      np.ndarray,
-        detections: Sequence[Detection],
+        frame:           np.ndarray,
+        detections:      Sequence[Detection],
+        selected_target: Optional[Detection] = None,
     ) -> np.ndarray:
         """
         Annotate *frame* in-place and return it.
@@ -124,8 +126,9 @@ class Visualizer:
 
         # ── Bounding boxes + labels ──────────────────────────────────────────
         for det in detections:
-            color     = self._color_for(det.class_name)
-            box_thick = 2
+            is_selected = (selected_target is not None and det is selected_target)
+            color     = (0, 255, 80) if is_selected else self._color_for(det.class_name)
+            box_thick = 3 if is_selected else 2
 
             # Box
             cv2.rectangle(out, (det.x1, det.y1), (det.x2, det.y2), color, box_thick)
@@ -139,6 +142,8 @@ class Visualizer:
             # Label
             if self.show_labels:
                 label = det.class_name
+                if det.track_id is not None:
+                    label += f" #{det.track_id}"
                 if self.show_conf:
                     label += f" {det.confidence:.0%}"
                 _put_text_with_bg(
@@ -175,6 +180,6 @@ class Visualizer:
 
         return out
 
-    def draw_detections(self, frame: np.ndarray, detections) -> np.ndarray:
+    def draw_detections(self, frame: np.ndarray, detections, selected_target=None) -> np.ndarray:
         """Alias for draw() — compatibility with main.py."""
-        return self.draw(frame, detections)
+        return self.draw(frame, detections, selected_target=selected_target)

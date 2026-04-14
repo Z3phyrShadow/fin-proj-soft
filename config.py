@@ -4,21 +4,21 @@ Modify values here; no changes to source files required.
 """
 
 # ==================== DETECTION ====================
-MODEL_PATH    = "models/yolo11n.onnx"
-CONFIDENCE    = 0.50
-IOU_THRESH    = 0.45
+MODEL_PATH    = "models/yolo11n.pt"    
+CONFIDENCE    = 0.40
+IOU_THRESH    = 0.40
 IMGSZ         = 320         # inference resolution — try 320 for ~4× speedup
 TRACK_CLASSES = ["person"]   # None = detect all COCO classes
 
 # Run YOLO inference every N frames; reuse last detections in between.
 # 1 = every frame (slowest), 2 = every other frame, 3 = every 3rd, etc.
-DETECTION_SKIP_FRAMES = 2
+DETECTION_SKIP_FRAMES = 3
 
 # ==================== CAMERA ====================
 CAMERA_SOURCE   = "auto"     # "auto" | "picamera2" | device index (0, 1, …)
 FRAME_WIDTH     = 640
 FRAME_HEIGHT    = 480
-SHOW_FPS        = False
+SHOW_FPS        = True
 CAMERA_THREADED = True       # background capture thread (recommended on Pi)
 CAMERA_ROTATE   = "90CW"     # "none" | "90CW" | "90CCW" | "180"
 
@@ -61,7 +61,7 @@ LASER_GPIO_PIN      = 27    # MOSFET gate driving the laser (OutputDevice)
 # ==================== ACTION LAYER ====================
 DEFAULT_MODE = "monitor"    # "standby" | "monitor" | "engage" | "abort"
 
-TARGETING_STRATEGY    = "closest" # closest to frame center
+TARGETING_STRATEGY    = "combined" # closest to frame center
 CENTER_TOLERANCE_X    = 50   # px
 CENTER_TOLERANCE_Y    = 50   # px
 ENGAGEMENT_COOLDOWN   = 2.0  # seconds between recorded engagements
@@ -104,4 +104,6 @@ SHOW_DEPTH_UI  = True
 # ==================== STREAMING ====================
 ENABLE_STREAM = True
 STREAM_PORT   = 5000
-STREAM_QUALITY = 70   # JPEG quality 0–100
+STREAM_QUALITY = 65   # JPEG quality 0–100
+TRACKING_ENABLED  = True        # Use ByteTrack tracker instead of raw detect
+TRACKER_TYPE      = "bytetrack" # "bytetrack" (recommended) | "botsort"

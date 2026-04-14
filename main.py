@@ -52,6 +52,8 @@ class RakshaqSystem:
             iou_thresh=config.IOU_THRESH,
             imgsz=config.IMGSZ,
             track_classes=config.TRACK_CLASSES,
+            tracking_enabled=getattr(config, "TRACKING_ENABLED", True),
+            tracker_type=getattr(config, "TRACKER_TYPE", "bytetrack"),
         )
 
         self.visualizer = Visualizer(show_fps=config.SHOW_FPS)
@@ -203,7 +205,7 @@ class RakshaqSystem:
             self._handle_no_target()
 
         # Visualise
-        annotated = self.visualizer.draw_detections(frame, detections)
+        annotated = self.visualizer.draw_detections(frame, detections, selected_target=target)
         annotated = self._add_overlays(annotated, target, depth)
 
         # Stream
