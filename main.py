@@ -248,6 +248,44 @@ class RakshaqSystem:
         return annotated
 
     # ──────────────────────────────────────────────────────────────────────────
+    def _update_depth_trigger(self, depth) -> None:
+        """Hysteresis depth → MONITOR ↔ ENGAGE transitions."""
+        threshold    = self.depth_ui.threshold if self.depth_ui else config.DEPTH_THRESHOLD
+        current_mode = self.action_controller.current_mode
+        uses_mm      = self.depth_estimator.uses_mm
+
+        # Condition for "target within range"
+        if uses_mm:
+            in_range = (0 < depth <= threshold)       # closer = smaller mm value
+        else:
+            in_range = (depth >= threshold)            # closer = larger % value
+
+        if in_range:
+            self._engage_counter  += 1
+            self._retreat_counter  = 0
+            if (self._engage_counter >= config.DEPTH_ENGAGE_FRAMES
+                    and current_mode == ActionMode.MONITOR):
+                unit = "mm" if uses_mm else "%"
+                print(f"\n[DEPTH] 🚨 Target in range ({depth:.0f}{unit} "
+                      f"{'<=' if uses_mm else '>='} {threshold}{unit}) → ENGAGE")
+                self.change_mode(ActionMode.ENGAGE)
+                self._engage_counter = 0
+            # Fire laser only when TOF is the active backend
+            if config.DEPTH_BACKEND == "tof":
+                self.laser.on()
+        else:
+            self._retreat_counter += 1
+            self._engage_counter   = 0
+            # TOF backend: safe the laser as soon as sensor reading retreats
+            if config.DEPTH_BACKEND == "tof":
+                self.laser.off()
+            if (self._retreat_counter >= config.DEPTH_RETREAT_FRAMES
+                    and current_mode == ActionMode.ENGAGE):
+                print(f"\n[DEPTH] Target retreated → MONITOR")
+                self.change_mode(ActionMode.MONITOR)
+                self._retreat_counter = 0
+
+    # ──────────────────────────────────────────────────────────────────────────
     def _add_overlays(self, frame, target, depth):
         h, w = frame.shape[:2]
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -295,7 +333,7 @@ class RakshaqSystem:
 
         # Pan / tilt position (bottom left)
         if config.SHOW_POSITION_INFO:
-            pan, tilt = self.turret.get_position()
+            pan, tilt = self.tracker.get_position()
             cv2.putText(frame, f"Pan: {pan:.0f}°  Tilt: {tilt:.0f}°",
                         (10, h - 20), font, 0.6, config.COLOR_TEXT, 2)
 
