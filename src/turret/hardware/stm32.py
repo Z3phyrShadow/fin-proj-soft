@@ -143,14 +143,11 @@ class STM32Controller:
         tilt_deg = self._tilt_steps / STEPS_PER_DEGREE
         return (pan_deg, tilt_deg)
 
-    # ──────────────────────────────────────────────────────────────────────────
     def cleanup(self) -> None:
-        self.reset()
-        time.sleep(0.15)
         if self._ser:
             self._ser.close()
         self._connected = False
-        print("[STM32] Cleaned up")
+        print("[STM32] Cleaned up (maintained position)")
 
     @property
     def connected(self) -> bool:

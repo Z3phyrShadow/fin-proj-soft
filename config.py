@@ -69,7 +69,7 @@ TRACK_DEADZONE_PX = 15
 # When the target is lost, the tracker chases its predicted trajectory
 # for CHASE_TIMEOUT_S seconds, then sweeps the area for SEARCH_TIMEOUT_S
 # seconds before giving up.
-CHASE_TIMEOUT_S      = 2.0       # seconds chasing predicted path
+CHASE_TIMEOUT_S      = 5.0       # seconds chasing predicted path
 SEARCH_TIMEOUT_S     = 10.0      # seconds sweeping area
 CHASE_PREDICT_FRAMES = 5         # rolling window for velocity estimate
 

@@ -284,6 +284,7 @@ class Tracker:
                 self._state = TrackState.SEARCHING
                 self._search_dir = self._guess_search_direction()
                 self._search_steps = 0
+                self._search_sweep_limit = int(90 * STEPS_PER_DEGREE)
                 print("[TRACKER] Chase timeout → SEARCHING")
 
         # ── SEARCHING: systematic pan sweep ──────────────────────────────────
@@ -314,35 +315,35 @@ class Tracker:
         # Velocity = (last_pos - first_pos) / time_span
         t0, x0, y0 = self._history[0]
         t1, x1, y1 = self._history[-1]
-        dt = t1 - t0
-        if dt < 0.01:
+        dt_hist = t1 - t0
+        if dt_hist < 0.01:
             return
 
-        vx = (x1 - x0) / dt   # pixels per second
-        vy = (y1 - y0) / dt
+        vx = (x1 - x0) / dt_hist   # pixels per second
+        vy = (y1 - y0) / dt_hist
 
-        # Predict where the target would be now
-        elapsed = time.monotonic() - t1
-        pred_error_x = vx * elapsed
-        pred_error_y = vy * elapsed
+        now = time.monotonic()
+        # Ensure we only apply one frame's worth of delta since the last update
+        dt_frame = now - getattr(self, '_last_chase_time', min(now - 0.033, t1))
+        self._last_chase_time = now
 
-        # Convert to degrees (reuse the frame size from history context)
-        # Use reduced gain for chase (less aggressive than tracking)
-        chase_gain = 0.15
-        pan_deg, tilt_deg = self._mapper.to_degrees(
-            pred_error_x, pred_error_y,
-            480, 360,  # approximate — chase doesn't need pixel precision
+        # Convert velocity (pixels/sec) to degrees/sec
+        pan_deg_per_sec, tilt_deg_per_sec = self._mapper.to_degrees(
+            vx, vy, 
+            480, 360,  # approximate frame size
         )
 
-        pan_steps  = int(pan_deg  * STEPS_PER_DEGREE * chase_gain)
-        tilt_steps = int(tilt_deg * STEPS_PER_DEGREE * chase_gain)
+        # Chase steps for this frame = degrees/sec * frame_duration * steps/deg
+        chase_gain = 0.6  # slightly softened
+        pan_steps  = int(pan_deg_per_sec  * dt_frame * STEPS_PER_DEGREE * chase_gain)
+        tilt_steps = int(tilt_deg_per_sec * dt_frame * STEPS_PER_DEGREE * chase_gain)
 
         pan_steps  = max(-self._max_steps // 2, min(self._max_steps // 2, pan_steps))
         tilt_steps = max(-self._max_steps // 2, min(self._max_steps // 2, tilt_steps))
 
-        if abs(pan_steps) > 2:
+        if abs(pan_steps) > 0:
             self._stm32.pan(pan_steps)
-        if abs(tilt_steps) > 2:
+        if abs(tilt_steps) > 0:
             self._stm32.tilt(tilt_steps)
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -362,18 +363,20 @@ class Tracker:
         """
         Slow pan sweep in the predicted direction.
 
-        Reverses direction when the pan limit is approached.
+        Reverses direction when the pan limit is approached, and sweeps
+        back across the arc.
         """
-        sweep_speed = 40   # steps per frame (slow sweep ≈ 4.5°/frame)
-        max_sweep_steps = int(90 * STEPS_PER_DEGREE)  # ±90° from start
+        sweep_speed = 15   # Much slower step rate (was 40). ~1.7°/frame
 
         steps = sweep_speed * self._search_dir
         self._search_steps += abs(steps)
 
-        if self._search_steps > max_sweep_steps:
+        if self._search_steps > getattr(self, '_search_sweep_limit', int(90 * STEPS_PER_DEGREE)):
             # Reverse direction
             self._search_dir *= -1
             self._search_steps = 0
+            # Double the sweep distance for subsequent legs so it fully crosses the center tracking point
+            self._search_sweep_limit = int(180 * STEPS_PER_DEGREE)
 
         self._stm32.pan(steps)
 

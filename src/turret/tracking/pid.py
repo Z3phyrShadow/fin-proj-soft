@@ -77,8 +77,14 @@ class PID:
             Correction in degrees, clamped to [output_min, output_max].
         """
         now = time.monotonic()
-        dt  = (now - self._prev_time) if self._prev_time is not None else 0.033
-        dt  = max(dt, 1e-6)  # guard against zero
+        
+        # Handle first frame after reset: prevent D-term spike
+        if self._prev_time is None:
+            dt = 0.033
+            self._prev_error = error
+        else:
+            dt = max(now - self._prev_time, 1e-6)
+            
         self._prev_time = now
 
         # ── Proportional ─────────────────────────────────────────────────────
