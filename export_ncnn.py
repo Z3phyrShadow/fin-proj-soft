@@ -22,8 +22,9 @@ from ultralytics import YOLO  # type: ignore
 
 model = YOLO(MODEL_PT)
 
-print("[EXPORT] Exporting to NCNN (this may take a couple of minutes) ...")
-model.export(format="ncnn", imgsz=640)
+IMGSZ = 320   # must match config.IMGSZ — NCNN bakes this in!
+print(f"[EXPORT] Exporting to NCNN at {IMGSZ}px (this may take a couple of minutes) ...")
+model.export(format="ncnn", imgsz=IMGSZ, half=False)
 
 # ultralytics saves it as <model_stem>_ncnn_model beside the .pt file
 ncnn_dir = MODEL_PT.replace(".pt", "_ncnn_model")

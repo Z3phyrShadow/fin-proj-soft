@@ -93,7 +93,9 @@ class Detector:
         self._model = YOLO(model_path)
         self._names: dict[int, str] = self._model.names
         print(f"[Detector] Model ready ({len(self._names)} classes) | "
-                f"tracking={'ON ('+tracker_type+')' if tracking_enabled else 'OFF'}")
+                f"tracking={'ON ('+tracker_type+')' if tracking_enabled else 'OFF'} | "
+                f"device={self._device}")
+        self._use_half = (self._device == "cuda")  # FP16 only on GPU
         self._warmup()
     # ──────────────────────────────────────────────────────────────────────────
     @staticmethod
@@ -117,7 +119,7 @@ class Detector:
                 imgsz=self.imgsz,
                 device=self._device,
                 verbose=False,
-                half=True,
+                half=self._use_half,
             )
             print("[Detector] Warm-up complete")
         except Exception as e:
@@ -146,7 +148,7 @@ class Detector:
             tracker=self._tracker_cfg,
             persist=True,
             verbose=False,
-            half=True,
+            half=self._use_half,
         )
         return self._parse_results(results, with_ids=True)
     # ──────────────────────────────────────────────────────────────────────────
@@ -158,7 +160,7 @@ class Detector:
             imgsz=self.imgsz,
             device=self._device,
             verbose=False,
-            half=True,
+            half=self._use_half,
         )
         return self._parse_results(results, with_ids=False)
     # ──────────────────────────────────────────────────────────────────────────

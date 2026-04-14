@@ -85,8 +85,8 @@ class Camera:
 
         self._picam = Picamera2()
         config      = self._picam.create_preview_configuration(
-            main={"size": (self.width, self.height), "format": "RGB888"},
-        buffer_count=2,
+            main={"size": (self.width, self.height), "format": "BGR888"},
+        buffer_count=4,
         controls={
                 "AeEnable":  True,
                 "AwbEnable": True,
@@ -108,7 +108,7 @@ class Camera:
             pass
 
         self._backend = "picamera2"
-        print(f"[Camera] Opened Picamera2 ({self.width}×{self.height}, RGB888, 2-buffer)")
+        print(f"[Camera] Opened Picamera2 ({self.width}×{self.height}, BGR888, 4-buffer)")
 
     def _open_opencv(self, device: int) -> None:
         self._cap = cv2.VideoCapture(device)
@@ -129,8 +129,7 @@ class Camera:
     # ──────────────────────────────────────────────────────────────────────────
     def read(self) -> np.ndarray | None:
         if self._backend == "picamera2":
-            frame = self._picam.capture_array()
-            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            frame = self._picam.capture_array()  # already BGR888
         elif self._backend == "opencv":
             ok, frame = self._cap.read()
             frame = frame if ok else None

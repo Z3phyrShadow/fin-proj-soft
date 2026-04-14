@@ -38,7 +38,7 @@ print(f"[EXPORT] Loading {MODEL_PT} ...")
 model = YOLO(MODEL_PT)
 
 print("[EXPORT] Exporting to ONNX ...")
-path = model.export(format="onnx", imgsz=640, simplify=True)
+path = model.export(format="onnx", imgsz=320, simplify=True)
 
 print(f"\n[EXPORT] Done! Saved to: {path}")
 print()

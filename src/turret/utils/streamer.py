@@ -11,6 +11,7 @@ from __future__ import annotations
 import threading
 import time
 import cv2
+import numpy as np
 
 
 class FrameStreamer:
@@ -25,12 +26,14 @@ class FrameStreamer:
         JPEG compression quality 0–100 (default 70).
     """
 
-    def __init__(self, port: int = 5000, quality: int = 70):
+    def __init__(self, port: int = 5000, quality: int = 70, max_fps: int = 12):
         self._port     = port
         self._quality  = quality
         self._jpg      = None
         self._lock     = threading.Lock()
         self._running  = False
+        self._min_interval = 1.0 / max(max_fps, 1)
+        self._last_encode  = 0.0
 
     # ──────────────────────────────────────────────────────────────────────────
     def update(self, frame) -> None:
@@ -42,6 +45,12 @@ class FrameStreamer:
         frame : numpy.ndarray
             BGR frame to encode and stream.
         """
+        if not self._running:
+            return
+        now = time.monotonic()
+        if (now - self._last_encode) < self._min_interval:
+            return   # skip — too soon, save CPU
+        self._last_encode = now
         try:
             ok, buf = cv2.imencode(
                 ".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, self._quality]
