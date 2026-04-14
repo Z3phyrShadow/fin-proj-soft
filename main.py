@@ -21,7 +21,8 @@ from src.turret.utils.visualizer   import Visualizer
 from src.turret.utils.streamer     import FrameStreamer
 from src.turret.ui.depth_control   import DepthControlUI
 from src.turret.action             import ActionController, ActionMode, TargetSelector
-from src.turret.action.controller  import TurretController
+from src.turret.hardware.stm32     import STM32Controller
+from src.turret.tracking           import Tracker, ParallaxCompensator, AxisMapper
 
 
 class RakshaqSystem:
@@ -62,14 +63,33 @@ class RakshaqSystem:
         print("\n[INIT] Phase 2: Hardware")
         print("-" * 60)
 
-        self.turret = TurretController(
-            stm32_port    = config.STM32_PORT,
-            stm32_baud    = config.STM32_BAUD,
-            hfov_deg      = config.CAMERA_HFOV_DEG,
-            vfov_deg      = config.CAMERA_VFOV_DEG,
-            pan_invert    = config.PAN_INVERT,
-            tilt_invert   = config.TILT_INVERT,
-            camera_rotate = config.CAMERA_ROTATE,
+        stm32 = STM32Controller(port=config.STM32_PORT, baud=config.STM32_BAUD)
+        axis_mapper = AxisMapper(
+            hfov_deg=config.CAMERA_HFOV_DEG,
+            vfov_deg=config.CAMERA_VFOV_DEG,
+            camera_rotate=config.CAMERA_ROTATE,
+            pan_invert=config.PAN_INVERT,
+            tilt_invert=config.TILT_INVERT,
+        )
+        parallax = ParallaxCompensator(
+            barrel_right_cm=config.BARREL_RIGHT_CM,
+            barrel_up_cm=config.BARREL_UP_CM,
+            barrel_forward_cm=config.BARREL_FORWARD_CM,
+        )
+
+        self.tracker = Tracker(
+            stm32=stm32,
+            axis_mapper=axis_mapper,
+            parallax=parallax,
+            kp=config.TRACK_KP,
+            ki=config.TRACK_KI,
+            kd=config.TRACK_KD,
+            i_max=config.TRACK_I_MAX,
+            deadzone_px=config.TRACK_DEADZONE_PX,
+            max_steps_per_frame=config.MOTOR_MAX_STEPS_PER_FRAME,
+            chase_timeout_s=config.CHASE_TIMEOUT_S,
+            search_timeout_s=config.SEARCH_TIMEOUT_S,
+            predict_window=config.CHASE_PREDICT_FRAMES,
         )
 
         self.tof   = TOFSensor(port=config.TOF_PORT, baud=config.TOF_BAUD)
@@ -126,8 +146,8 @@ class RakshaqSystem:
         self.action_controller = ActionController(initial_mode)
 
         self.target_selector = TargetSelector(
-            strategy=config.TARGETING_STRATEGY,
             min_confidence=config.CONFIDENCE,
+            switch_hysteresis_px=config.TARGET_SWITCH_HYSTERESIS,
         )
         self.target_selector.update_frame_size(config.FRAME_WIDTH, config.FRAME_HEIGHT)
 
@@ -139,7 +159,6 @@ class RakshaqSystem:
         # General state
         self.running        = False
         self.current_target = None
-        self.last_scan_time = 0
         self.frame_count    = 0
 
         print("\n[INIT] ✅ System ready!")
@@ -200,10 +219,24 @@ class RakshaqSystem:
             self.depth_ui.update(depth)
 
         # Tracking / engagement
-        if target:
-            self._process_target(target, frame)
-        else:
-            self._handle_no_target()
+        tracking_state = self.tracker.update(
+            target=target,
+            detections=detections,
+            frame_w=config.FRAME_WIDTH,
+            frame_h=config.FRAME_HEIGHT,
+            tof_mm=self.tof.distance_mm,
+            allow_movement=self.action_controller.config.allow_movement,
+        )
+
+        if tracking_state.name == "TRACKING" and target:
+            # We are on-target, consider engaging
+            # The old TurretController checked `is_centered(target.center)`.
+            # Tracker handles the PID positioning, so we assume if we are the TRACKING state,
+            # we are successfully aiming at the target.
+            if self.action_controller.should_engage(target_centered=True):
+                 self.action_controller.record_engagement(
+                    f"{target.class_name} (conf: {target.confidence:.0%})"
+                )
 
         # Visualise
         annotated = self.visualizer.draw_detections(frame, detections, selected_target=target)
@@ -213,65 +246,6 @@ class RakshaqSystem:
         self.streamer.update(annotated)
 
         return annotated
-
-    # ──────────────────────────────────────────────────────────────────────────
-    def _update_depth_trigger(self, depth) -> None:
-        """Hysteresis depth → MONITOR ↔ ENGAGE transitions."""
-        threshold    = self.depth_ui.threshold if self.depth_ui else config.DEPTH_THRESHOLD
-        current_mode = self.action_controller.current_mode
-        uses_mm      = self.depth_estimator.uses_mm
-
-        # Condition for "target within range"
-        if uses_mm:
-            in_range = (0 < depth <= threshold)       # closer = smaller mm value
-        else:
-            in_range = (depth >= threshold)            # closer = larger % value
-
-        if in_range:
-            self._engage_counter  += 1
-            self._retreat_counter  = 0
-            if (self._engage_counter >= config.DEPTH_ENGAGE_FRAMES
-                    and current_mode == ActionMode.MONITOR):
-                unit = "mm" if uses_mm else "%"
-                print(f"\n[DEPTH] 🚨 Target in range ({depth:.0f}{unit} "
-                      f"{'<=' if uses_mm else '>='} {threshold}{unit}) → ENGAGE")
-                self.change_mode(ActionMode.ENGAGE)
-                self._engage_counter = 0
-            # Fire laser only when TOF is the active backend
-            if config.DEPTH_BACKEND == "tof":
-                self.laser.on()
-        else:
-            self._retreat_counter += 1
-            self._engage_counter   = 0
-            # TOF backend: safe the laser as soon as sensor reading retreats
-            if config.DEPTH_BACKEND == "tof":
-                self.laser.off()
-            if (self._retreat_counter >= config.DEPTH_RETREAT_FRAMES
-                    and current_mode == ActionMode.ENGAGE):
-                print(f"\n[DEPTH] Target retreated → MONITOR")
-                self.change_mode(ActionMode.MONITOR)
-                self._retreat_counter = 0
-
-    # ──────────────────────────────────────────────────────────────────────────
-    def _process_target(self, target, frame):
-        if self.action_controller.should_track():
-            cx, cy = target.center
-            self.turret.track_target(cx, cy, config.FRAME_WIDTH, config.FRAME_HEIGHT)
-            is_centered = TurretController.is_centered(
-                cx, cy, config.FRAME_WIDTH, config.FRAME_HEIGHT,
-                config.CENTER_TOLERANCE_X, config.CENTER_TOLERANCE_Y,
-            )
-            if is_centered and self.action_controller.should_engage(is_centered):
-                self.action_controller.record_engagement(
-                    f"{target.class_name} (conf: {target.confidence:.0%})"
-                )
-
-    def _handle_no_target(self):
-        if config.AUTO_SCAN_ON_NO_TARGET:
-            if time.time() - self.last_scan_time > config.SCAN_INTERVAL:
-                if self.action_controller.config.allow_movement:
-                    self.turret.scan_area()
-                    self.last_scan_time = time.time()
 
     # ──────────────────────────────────────────────────────────────────────────
     def _add_overlays(self, frame, target, depth):
@@ -368,17 +342,17 @@ class RakshaqSystem:
         if self.action_controller.set_mode(mode):
             print(f"\n{'='*60}\nMODE: {mode.value.upper()}\n{'='*60}\n")
             if mode == ActionMode.ABORT:
-                self.turret.emergency_stop()
+                self.tracker.emergency_stop()
             elif mode == ActionMode.STANDBY:
-                self.turret.reset()
+                self.tracker.reset()
 
     def handle_keyboard(self, key: int) -> bool:
         if key in (ord("q"), 27):
             return False
         elif key == ord("r"):
-            self.turret.reset()
+            self.tracker.reset()
         elif key == ord("s"):
-            self.turret.scan_area()
+            self.tracker.scan_area()
         elif key == ord("1"):
             self.change_mode(ActionMode.STANDBY)
         elif key == ord("2"):
@@ -433,7 +407,7 @@ class RakshaqSystem:
         except Exception as exc:
             print(f"\n[ERROR] System error: {exc}")
             import traceback; traceback.print_exc()
-            self.turret.emergency_stop()
+            self.tracker.emergency_stop()
         finally:
             self.cleanup()
 
@@ -451,7 +425,7 @@ class RakshaqSystem:
         print("[CLEANUP] Stopping camera...")
         self.camera.release()
         print("[CLEANUP] Resetting turret...")
-        self.turret.cleanup()
+        self.tracker.cleanup()
         try:
             cv2.destroyAllWindows()
         except Exception:

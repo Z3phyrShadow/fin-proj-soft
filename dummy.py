@@ -58,6 +58,7 @@ from src.turret.utils.visualizer   import Visualizer
 from src.turret.utils.streamer     import FrameStreamer
 from src.turret.ui.depth_control   import DepthControlUI
 from src.turret.action             import ActionMode, ActionController, TargetSelector
+from src.turret.tracking           import Tracker, AxisMapper, ParallaxCompensator
 
 # ── IJKL step size per key-press ─────────────────────────────────────────────
 STEP = 100   # steps per key-press  (~11°)
@@ -88,6 +89,11 @@ class MockTurret:
         return (self._pan_steps / STEPS_PER_DEGREE,
                 self._tilt_steps / STEPS_PER_DEGREE)
 
+    def reset(self, reset_tilt=True):
+        self.reset_pan()
+        if reset_tilt:
+            self._tilt_steps = 0
+
 
 class DummySystem:
     def __init__(self, headless: bool = False):
@@ -115,8 +121,30 @@ class DummySystem:
             track_classes=config.TRACK_CLASSES,
         )
 
-        # Mock turret
+        # Mock turret & Tracking
         self.turret = MockTurret()
+        
+        axis_mapper = AxisMapper(
+            hfov_deg=config.CAMERA_HFOV_DEG,
+            vfov_deg=config.CAMERA_VFOV_DEG,
+            camera_rotate=config.CAMERA_ROTATE,
+        )
+        parallax = ParallaxCompensator(
+            barrel_right_cm=config.BARREL_RIGHT_CM,
+            barrel_up_cm=config.BARREL_UP_CM,
+            barrel_forward_cm=config.BARREL_FORWARD_CM,
+        )
+        self.tracker = Tracker(
+            stm32=self.turret,  # type: ignore (mocks stm32)
+            axis_mapper=axis_mapper,
+            parallax=parallax,
+            kp=config.TRACK_KP,
+            ki=config.TRACK_KI,
+            kd=config.TRACK_KD,
+            i_max=config.TRACK_I_MAX,
+            deadzone_px=config.TRACK_DEADZONE_PX,
+            max_steps_per_frame=config.MOTOR_MAX_STEPS_PER_FRAME,
+        )
 
         # Sensors (all degrade gracefully to 0mm if not on Pi)
         self.tof   = TOFSensor(port=config.TOF_PORT, baud=config.TOF_BAUD)
@@ -152,8 +180,7 @@ class DummySystem:
 
         # Action
         self.ac = ActionController(ActionMode.MONITOR)
-        self.ts = TargetSelector(strategy=config.TARGETING_STRATEGY,
-                                 min_confidence=config.CONFIDENCE)
+        self.ts = TargetSelector(min_confidence=config.CONFIDENCE, switch_hysteresis_px=config.TARGET_SWITCH_HYSTERESIS)
         self.ts.update_frame_size(config.FRAME_WIDTH, config.FRAME_HEIGHT)
 
         # Visualizer + streamer
@@ -180,17 +207,14 @@ class DummySystem:
         if self.depth_ui:
             self.depth_ui.update(depth)
 
-        # Auto-track with mock turret
-        if target and self.ac.should_track():
-            from src.turret.hardware.stm32 import STEPS_PER_DEGREE
-            cx, cy = target.center
-            err_x  = cx - config.FRAME_WIDTH  // 2
-            err_y  = cy - config.FRAME_HEIGHT // 2
-            p = config.TRACKING_P_GAIN
-            sx = int((err_x  / config.FRAME_WIDTH)  * config.CAMERA_HFOV_DEG * STEPS_PER_DEGREE * p)
-            sy = int((-err_y / config.FRAME_HEIGHT) * config.CAMERA_VFOV_DEG * STEPS_PER_DEGREE * p)
-            if abs(sx) > 4: self.turret.pan(sx)
-            if abs(sy) > 4: self.turret.tilt(sy)
+        # Auto-track with mock turret tracker
+        self.tracker.update(
+            target=target,
+            detections=dets,
+            frame_w=config.FRAME_WIDTH,
+            frame_h=config.FRAME_HEIGHT,
+            allow_movement=self.ac.should_track(),
+        )
 
         annotated = self.viz.draw_detections(frame, dets)
         annotated = self._overlay(annotated, target, depth)

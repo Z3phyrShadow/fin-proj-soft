@@ -28,7 +28,7 @@ STM32_BAUD     = 115200
 
 # Camera field-of-view (Pi Camera v3 with 90° CW rotation: H/V swap)
 # After 90° rotation: effective HFOV ≈ physical VFOV and vice-versa
-CAMERA_HFOV_DEG = 66.0   # degrees horizontal  (tune if tracking overshoots)
+CAMERA_HFOV_DEG = 66.0   # degrees horizontal  (post-rotation displayed image)
 CAMERA_VFOV_DEG = 52.0   # degrees vertical
 
 # Motor step limits (software safety — beyond this, stop commanding)
@@ -38,18 +38,47 @@ TILT_STEP_LIMIT  = 800   # ≈ ±90°
 # Max steps sent per frame (prevents violent snap-to-target)
 MOTOR_MAX_STEPS_PER_FRAME = 200  # ≈ 22°
 
-# Proportional gain for motor tracking (0.0–1.0).
-# 1.0 = immediately correct full error each frame → oscillation.
-# 0.3–0.5 = move a fraction each frame → smoother convergence.
-TRACKING_P_GAIN = 0.4
-
 # Pan/tilt direction inversion (flip if motor moves the wrong way).
-# NOTE: These flags now only control motor wiring direction — axis
-# swapping due to camera rotation is handled automatically.
-# If tracking still moves the wrong way after the rotation fix,
-# toggle one or both of these.
+# These only control motor wiring direction — axis swapping due to
+# camera rotation is handled automatically by AxisMapper.
 PAN_INVERT  = True
 TILT_INVERT = True
+
+# ==================== BARREL GEOMETRY ====================
+# Physical offset of the LED barrel relative to the camera.
+# All values in centimetres.
+BARREL_RIGHT_CM   = 13.0     # barrel is 13 cm to the right of camera
+BARREL_UP_CM      =  4.0     # barrel is 4 cm above camera
+BARREL_FORWARD_CM = 14.0     # barrel sticks out 14 cm forward (turret tip)
+
+# ==================== PID TRACKING ====================
+# PID gains for pan and tilt axes.
+# Tuned for smooth tracking (low P, moderate D, small I).
+TRACK_KP = 0.35              # proportional: main responsiveness
+TRACK_KI = 0.02              # integral: eliminates steady-state offset
+TRACK_KD = 0.15              # derivative: dampens oscillation
+
+# Anti-windup: max accumulated integral (degrees)
+TRACK_I_MAX = 50.0
+
+# Dead zone: don't command motors when target is within this many
+# pixels of the aim point.  Prevents micro-jitter when centred.
+TRACK_DEADZONE_PX = 15
+
+# ==================== CHASE / SEARCH ====================
+# When the target is lost, the tracker chases its predicted trajectory
+# for CHASE_TIMEOUT_S seconds, then sweeps the area for SEARCH_TIMEOUT_S
+# seconds before giving up.
+CHASE_TIMEOUT_S      = 2.0       # seconds chasing predicted path
+SEARCH_TIMEOUT_S     = 10.0      # seconds sweeping area
+CHASE_PREDICT_FRAMES = 5         # rolling window for velocity estimate
+
+# ==================== TARGET SELECTION ====================
+TARGETING_STRATEGY    = "closest"   # "closest" to frame center (recommended)
+CENTER_TOLERANCE_X    = 50          # px (for "is_centered" check)
+CENTER_TOLERANCE_Y    = 50          # px
+TARGET_SWITCH_HYSTERESIS = 40       # px — only switch targets if new one is
+                                    # this much closer to centre
 
 # ==================== HARDWARE — SENSORS ====================
 TOF_PORT        = "/dev/ttyAMA0"
@@ -65,9 +94,6 @@ LASER_GPIO_PIN      = 27    # MOSFET gate driving the laser (OutputDevice)
 # ==================== ACTION LAYER ====================
 DEFAULT_MODE = "monitor"    # "standby" | "monitor" | "engage" | "abort"
 
-TARGETING_STRATEGY    = "combined" # closest to frame center
-CENTER_TOLERANCE_X    = 50   # px
-CENTER_TOLERANCE_Y    = 50   # px
 ENGAGEMENT_COOLDOWN   = 2.0  # seconds between recorded engagements
 AUTO_SCAN_ON_NO_TARGET = True
 SCAN_INTERVAL          = 30  # seconds between auto-scans when no target

@@ -1,96 +1,108 @@
 """
-Targeting Logic - Target Selection and Prioritization
-Works with Detection objects from detector.py
+targeting.py — Target selection with closest-to-centre strategy.
+
+Selects the person closest to frame centre, with hysteresis to prevent
+flip-flopping between two equidistant targets.
 """
 
-from typing import List, Optional
+from __future__ import annotations
+
 import math
+from typing import List, Optional
 
 
 class TargetSelector:
-    """Selects highest priority target from detections"""
-    
+    """
+    Selects the highest priority target from YOLO detections.
+
+    Strategy: always pick the person closest to frame centre.
+    Hysteresis: only switch to a different target if it is closer
+    to centre by at least *switch_hysteresis_px* pixels.
+
+    Parameters
+    ----------
+    min_confidence : float
+        Minimum confidence to consider a detection.
+    switch_hysteresis_px : int
+        A new target must be this many pixels closer to centre
+        before we switch away from the current one.
+    """
+
     def __init__(
         self,
-        strategy: str = "closest",
-        min_confidence: float = 0.5
+        min_confidence: float     = 0.40,
+        switch_hysteresis_px: int = 40,
+        **_kwargs,  # accept and ignore extra kwargs for compat
     ):
-        """
-        Initialize target selector
-        
-        Args:
-            strategy: Selection strategy
-                - "closest": Nearest to frame center
-                - "confident": Highest confidence
-                - "largest": Largest bounding box
-                - "combined": Weighted combination (recommended)
-            min_confidence: Minimum confidence threshold
-        """
-        self.strategy = strategy
-        self.min_confidence = min_confidence
-        self.frame_width = 1280
-        self.frame_height = 720
-        
-        print(f"[TARGETING] Strategy: {strategy}, min_conf: {min_confidence}")
-    
-    def update_frame_size(self, width: int, height: int):
-        """Update frame dimensions"""
-        self.frame_width = width
+        self.min_confidence      = min_confidence
+        self.switch_hysteresis   = switch_hysteresis_px
+        self.frame_width:  int   = 480
+        self.frame_height: int   = 360
+
+        self._current_track_id: int | None = None
+
+        print(f"[TARGETING] Strategy: closest-to-centre  "
+              f"hysteresis={switch_hysteresis_px}px  "
+              f"min_conf={min_confidence}")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    def update_frame_size(self, width: int, height: int) -> None:
+        self.frame_width  = width
         self.frame_height = height
-    
-    def select_target(self, detections: List) -> Optional:
+
+    # ──────────────────────────────────────────────────────────────────────────
+    def select_target(self, detections: list) -> Optional:
         """
-        Select highest priority target from detections
-        
-        Args:
-            detections: List of Detection objects (from your teammate's detector)
-            
-        Returns:
-            Selected Detection or None
+        Pick the best target from *detections*.
+
+        Returns the Detection closest to frame centre, with hysteresis
+        to avoid flip-flopping.  Returns None if no valid detections.
         """
         if not detections:
+            self._current_track_id = None
             return None
-        
+
         # Filter by confidence
         valid = [d for d in detections if d.confidence >= self.min_confidence]
-        
         if not valid:
+            self._current_track_id = None
             return None
-        
-        # Apply strategy
-        if self.strategy == "closest":
-            return self._select_closest(valid)
-        elif self.strategy == "confident":
-            return max(valid, key=lambda d: d.confidence)
-        elif self.strategy == "largest":
-            return max(valid, key=lambda d: d.width * d.height)
-        elif self.strategy == "combined":
-            return self._select_combined(valid)
-        else:
-            return self._select_closest(valid)
-    
-    def _select_closest(self, detections: List):
-        """Select target closest to frame center"""
-        frame_center = (self.frame_width / 2, self.frame_height / 2)
-        
-        def distance(det):
+
+        cx_frame = self.frame_width  / 2.0
+        cy_frame = self.frame_height / 2.0
+
+        def _dist(det):
             cx, cy = det.center
-            return math.sqrt((cx - frame_center[0])**2 + (cy - frame_center[1])**2)
-        
-        return min(detections, key=distance)
-    
-    def _select_combined(self, detections: List):
-        """Combined scoring: confidence × (1 - distance) × size"""
-        frame_center = (self.frame_width / 2, self.frame_height / 2)
-        max_dist = math.sqrt(self.frame_width**2 + self.frame_height**2) / 2
-        max_area = self.frame_width * self.frame_height
-        
-        def score(det):
-            cx, cy = det.center
-            distance = math.sqrt((cx - frame_center[0])**2 + (cy - frame_center[1])**2)
-            dist_factor = distance / max_dist
-            size_factor = (det.width * det.height) / max_area
-            
-            return det.confidence * (1 - dist_factor * 0.3) * (0.5 + 0.5 * size_factor)
-        
-        return max(detections, key=score)
+            return math.hypot(cx - cx_frame, cy - cy_frame)
+
+        # Find the absolute closest target
+        closest = min(valid, key=_dist)
+
+        # Hysteresis: if we're already tracking someone, keep them
+        # unless the new closest is significantly better.
+        if self._current_track_id is not None:
+            current = self._find_by_track_id(valid, self._current_track_id)
+            if current is not None:
+                dist_current = _dist(current)
+                dist_closest = _dist(closest)
+                # Only switch if the new one is closer by the hysteresis margin
+                if dist_current - dist_closest < self.switch_hysteresis:
+                    return current
+                # else: switch to the new closest below
+
+        # Update tracked ID
+        self._current_track_id = closest.track_id
+        return closest
+
+    # ──────────────────────────────────────────────────────────────────────────
+    @staticmethod
+    def _find_by_track_id(detections: list, track_id: int):
+        """Find a detection with the given ByteTrack ID, or None."""
+        for d in detections:
+            if d.track_id == track_id:
+                return d
+        return None
+
+    @property
+    def current_track_id(self) -> int | None:
+        return self._current_track_id
