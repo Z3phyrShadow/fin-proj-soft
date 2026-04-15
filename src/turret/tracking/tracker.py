@@ -320,7 +320,7 @@ class Tracker:
         # ── SEARCHING: systematic pan sweep ──────────────────────────────────
         if self._state == TrackState.SEARCHING:
             elapsed = now - self._lost_time
-            if elapsed < self._lost_time + self._search_timeout:
+            if elapsed < self._search_timeout:
                 self._search_sweep()
                 return self._state
             else:

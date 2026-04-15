@@ -12,6 +12,7 @@ Falls back to mock (console print) if the serial port is unavailable.
 """
 
 from __future__ import annotations
+import math
 import time
 
 
@@ -94,8 +95,15 @@ class STM32Controller:
         if abs(steps) < self._deadband:
             return
         new_pos = self._pan_steps + steps
+        # Clamp to limit rather than silently dropping the whole command.
+        # Without this, rightward tracking stops dead once _pan_steps hits
+        # the limit, while leftward movement continues to work fine.
         if abs(new_pos) > self._pan_limit:
-            return   # software limit reached
+            clamped = int(math.copysign(self._pan_limit, new_pos))
+            steps   = clamped - self._pan_steps
+            new_pos = clamped
+            if abs(steps) < self._deadband:
+                return
         self.send(f"X{steps}")
         self._pan_steps = new_pos
 
