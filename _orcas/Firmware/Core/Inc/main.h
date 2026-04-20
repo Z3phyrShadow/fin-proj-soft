@@ -4,20 +4,29 @@
   * @file           : main.h
   * @brief          : Header for main.c file.
   *                   ORCAS v2 – Laser turret build.
+  *
+  *                   ROLE: MOTOR CONTROL ONLY.
+  *                   All sensors (camera, TOF, ultrasonic) live on the
+  *                   Raspberry Pi. The Pi runs YOLO, computes angle errors,
+  *                   and sends UART commands. The STM32 only drives the two
+  *                   stepper motors (pan/tilt) and the searchlight LED.
+  *                   Connection to Pi: USB-serial (Nucleo onboard ST-Link)
+  *                   at 9600 baud.
+  *
   *                   Hardware: STM32F030R8 Nucleo + CNC Shield V3 + 2x A4988
   *                   Pan motor  : X-axis A4988  (PC12 STEP / PD2 DIR)
   *                   Tilt motor : Y-axis A4988  (PB3  STEP / PB4 DIR)
   *                   Pan origin : PC6  (active-LOW limit switch, EXTI falling)
-  *                   UART       : USART1 PA9/PA10, 9600 baud
-  *                   Searchlight: TIM3 CH4 PWM  → PB1 (AF1)
+  *                   UART       : USART1 PA9/PA10, 9600 baud (via USB-serial)
+  *                   Searchlight: TIM3 CH4 PWM → PB1 (AF1)
   *
-  *  Compile-time feature flags:
-  *    #define PAN_CTRL          – enable pan stepper
-  *    #define TILT_CTRL         – enable tilt stepper (step-count mode, no
-  *                               accelerometer; define TILT_USE_ACCEL if
-  *                               the MMA845x is fitted)
-  *    FIRE_CTRL   is DISABLED   – laser fired from Pi GPIO, not STM32
-  *    TOF_SENSORS_CTRL DISABLED – no radar / ultrasonic sensor
+  *  Compile-time feature flags (sensors disabled – all handled by Pi):
+  *    #define PAN_CTRL   – enable pan stepper
+  *    #define TILT_CTRL  – enable tilt stepper (step-count mode)
+  *    FIRE_CTRL        DISABLED – laser fired via Pi GPIO + MOSFET
+  *    TOF_SENSORS_CTRL DISABLED – TOF/ultrasonic read by Pi, not STM32
+  *    AIMING_TOF_CTRL  DISABLED – TOF on Pi I2C, not STM32 I2C
+  *    TILT_USE_ACCEL   DISABLED – no accelerometer on STM32
   ******************************************************************************
   * @attention
   *
@@ -63,12 +72,15 @@ extern "C" {
 #define FW_VER  "ORCAS_v2_202604"
 
 /* ── Feature flags ──────────────────────────────────────────────────────── */
-#define PAN_CTRL          /* Pan stepper enabled                              */
-#define TILT_CTRL         /* Tilt stepper enabled (step-count mode)           */
-/* #define TILT_USE_ACCEL */ /* Uncomment only if MMA845x is physically fitted */
-/* #define FIRE_CTRL      */ /* DISABLED – laser fired by Pi GPIO, not STM32  */
-/* #define TOF_SENSORS_CTRL */ /* DISABLED – no radar / ultrasonic             */
-#define AIMING_TOF_CTRL   /* GY_TOF10M distance polling only                  */
+/* Motor control (on STM32) */
+#define PAN_CTRL   /* Pan stepper enabled                                      */
+#define TILT_CTRL  /* Tilt stepper enabled (step-count mode, no accelerometer) */
+
+/* Disabled: sensors and firing are handled by the Raspberry Pi, not STM32   */
+/* #define TILT_USE_ACCEL   */ /* No accelerometer on STM32 in this build      */
+/* #define FIRE_CTRL        */ /* Laser fired via Pi GPIO + MOSFET             */
+/* #define TOF_SENSORS_CTRL */ /* TOF/ultrasonic read by Pi USB sensors        */
+/* #define AIMING_TOF_CTRL  */ /* TOF sensor is on Pi I2C, not STM32 I2C       */
 
 /* USER CODE END EM */
 
@@ -78,9 +90,6 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-void MX_I2C_ForceClearBusyFlag(I2C_HandleTypeDef *hi2c,
-                               GPIO_TypeDef* sda_gpio_port, uint16_t sda_gpio_pin,
-                               GPIO_TypeDef* scl_gpio_port, uint16_t scl_gpio_pin);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
@@ -113,17 +122,9 @@ void MX_I2C_ForceClearBusyFlag(I2C_HandleTypeDef *hi2c,
 #define TARGETING_LED_PWM_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
-/* I2C1 pins - used by GY_TOF10M sensor  (AF1 on F030)                     */
-#define I2C1_SDA_Pin        GPIO_PIN_7
-#define I2C1_SDA_GPIO_Port  GPIOB
-#define I2C1_SCL_Pin        GPIO_PIN_6
-#define I2C1_SCL_GPIO_Port  GPIOB
-
-/* I2C2 pins – retained in case TILT_USE_ACCEL is re-enabled later (AF1)   */
-#define I2C2_SDA_Pin        GPIO_PIN_11
-#define I2C2_SDA_GPIO_Port  GPIOB
-#define I2C2_SCL_Pin        GPIO_PIN_10
-#define I2C2_SCL_GPIO_Port  GPIOB
+/* NOTE: No I2C peripherals are used on the STM32 in this build.
+ *       The TOF sensor and all other sensors are connected to and read by
+ *       the Raspberry Pi. PB6/PB7/PB10/PB11 are unused GPIO in this config. */
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

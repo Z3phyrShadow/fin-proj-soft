@@ -31,7 +31,6 @@ TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart1;
-I2C_HandleTypeDef hi2c1;
 
 /* USER CODE BEGIN PV */
 #define PERODIC_ROUTINES_DISPATCHED__ORIENTATION_CTRL   0x02
@@ -44,7 +43,6 @@ uint8_t perodic_routines_dispatched = 0;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART1_UART_Init(void);
-static void MX_I2C1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 
@@ -63,9 +61,6 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART1_UART_Init();
-#ifdef AIMING_TOF_CTRL
-  MX_I2C1_Init();
-#endif
   MX_TIM2_Init();
   MX_TIM3_Init();
 
@@ -79,10 +74,6 @@ int main(void)
   /* Initialize orientation control (steppers) */
   orientation_ctrl_init();
 
-#ifdef AIMING_TOF_CTRL
-  aiming_tof_ctrl_init();
-#endif
-
   /* Infinite loop */
   while (1)
   {
@@ -94,12 +85,6 @@ int main(void)
         perodic_routines_dispatched &= ~PERODIC_ROUTINES_DISPATCHED__UART_CMDS_HANDLING;
         uart_cmds_handle_perodic_routines();
     }
-#ifdef AIMING_TOF_CTRL
-    if(perodic_routines_dispatched & PERODIC_ROUTINES_DISPATCHED__AIMING_TOF_CTRL){
-        perodic_routines_dispatched &= ~PERODIC_ROUTINES_DISPATCHED__AIMING_TOF_CTRL;
-        aiming_tof_ctrl_perodic_routines();
-    }
-#endif
   }
 }
 
@@ -357,12 +342,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		if(global_timer_count_us % ORIENTATION_CTRL_ROUTINES_MIN_PERIOD_US == 0){
 			perodic_routines_dispatched |= PERODIC_ROUTINES_DISPATCHED__ORIENTATION_CTRL;
 		}
-
-#ifdef AIMING_TOF_CTRL
-		if(global_timer_count_us % AIMING_TOF_CTRL_MIN_PERIOD_US == 0){
-			perodic_routines_dispatched |= PERODIC_ROUTINES_DISPATCHED__AIMING_TOF_CTRL;
-		}
-#endif
 	}
 }
 
@@ -382,46 +361,4 @@ void Error_Handler(void)
   while (1)
   {
   }
-}
-
-/**
-  * @brief Force-clear I2C busy flag by bit-banging the clock line.
-  *        Works identically on F0 and F1 – GPIO operations are HAL-agnostic.
-  *        Call this after an I2C timeout to unstick a slave that is holding SDA.
-  */
-void MX_I2C_ForceClearBusyFlag(I2C_HandleTypeDef *hi2c,
-                               GPIO_TypeDef* sda_gpio_port, uint16_t sda_gpio_pin,
-                               GPIO_TypeDef* scl_gpio_port, uint16_t scl_gpio_pin)
-{
-	GPIO_InitTypeDef GPIO_InitStruct = {0};
-
-	GPIO_InitStruct.Pin   = sda_gpio_pin;
-	GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_OD;
-	GPIO_InitStruct.Pull  = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-	HAL_GPIO_Init(sda_gpio_port, &GPIO_InitStruct);
-
-	GPIO_InitStruct.Pin   = scl_gpio_pin;
-	HAL_GPIO_Init(scl_gpio_port, &GPIO_InitStruct);
-
-	HAL_GPIO_WritePin(sda_gpio_port, sda_gpio_pin, GPIO_PIN_SET);
-	HAL_GPIO_WritePin(scl_gpio_port, scl_gpio_pin, GPIO_PIN_SET);
-
-	for(uint8_t i = 0; i < 9; i++){
-		HAL_GPIO_WritePin(scl_gpio_port, scl_gpio_pin, GPIO_PIN_RESET);
-		HAL_Delay(1);
-		HAL_GPIO_WritePin(scl_gpio_port, scl_gpio_pin, GPIO_PIN_SET);
-		HAL_Delay(1);
-	}
-
-	HAL_GPIO_WritePin(scl_gpio_port, scl_gpio_pin, GPIO_PIN_RESET);
-	HAL_Delay(1);
-	HAL_GPIO_WritePin(sda_gpio_port, sda_gpio_pin, GPIO_PIN_RESET);
-	HAL_Delay(1);
-	HAL_GPIO_WritePin(scl_gpio_port, scl_gpio_pin, GPIO_PIN_SET);
-	HAL_Delay(1);
-	HAL_GPIO_WritePin(sda_gpio_port, sda_gpio_pin, GPIO_PIN_SET);
-	HAL_Delay(1);
-
-	HAL_I2C_Init(hi2c);
 }
