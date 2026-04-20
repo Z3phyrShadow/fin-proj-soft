@@ -1,0 +1,75 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file    stm32f0xx_it.h
+  * @brief   This file contains the headers of the interrupt handlers.
+  *          NOTE: Cortex-M0 does NOT have MemManage, BusFault, UsageFault
+  *          or DebugMon handlers — only HardFault.
+  *          NOTE: On F030, EXTI lines 4-15 share one IRQ: EXTI4_15_IRQHandler.
+  ******************************************************************************
+  * @attention
+  *
+  * <h2><center>&copy; Copyright (c) 2025 STMicroelectronics.
+  * All rights reserved.</center></h2>
+  *
+  * This software component is licensed by ST under BSD 3-Clause license,
+  * the "License"; You may not use this file except in compliance with the
+  * License. You may obtain a copy of the License at:
+  *                        opensource.org/licenses/BSD-3-Clause
+  *
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+
+/* Define to prevent recursive inclusion -------------------------------------*/
+#ifndef __STM32F0xx_IT_H
+#define __STM32F0xx_IT_H
+
+#ifdef __cplusplus
+ extern "C" {
+#endif
+
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
+
+/* USER CODE END Includes */
+
+/* Exported types ------------------------------------------------------------*/
+/* USER CODE BEGIN ET */
+
+/* USER CODE END ET */
+
+/* Exported constants --------------------------------------------------------*/
+/* USER CODE BEGIN EC */
+
+/* USER CODE END EC */
+
+/* Exported macro ------------------------------------------------------------*/
+/* USER CODE BEGIN EM */
+
+/* USER CODE END EM */
+
+/* Exported functions prototypes ---------------------------------------------*/
+/* Cortex-M0 core handlers */
+void NMI_Handler(void);
+void HardFault_Handler(void);
+/* NOTE: MemManage, BusFault, UsageFault, DebugMon do NOT exist on Cortex-M0 */
+void SVC_Handler(void);
+void PendSV_Handler(void);
+void SysTick_Handler(void);
+
+/* STM32F030R8 peripheral handlers used by this application */
+void EXTI4_15_IRQHandler(void);     /* Pan origin limit switch (PC6)         */
+void TIM2_IRQHandler(void);         /* Master timer                          */
+void USART1_IRQHandler(void);       /* UART command channel                  */
+/* USER CODE BEGIN EFP */
+
+/* USER CODE END EFP */
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* __STM32F0xx_IT_H */
+
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

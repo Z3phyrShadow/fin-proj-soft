@@ -2,6 +2,11 @@
  * uart_cmds_handle.c
  *
  *  ORCAS v2 – UART command dispatch.
+ *
+ *  STM32F030R8 port change:
+ *    STM32F1 USART uses SR (Status Register) and DR (Data Register).
+ *    STM32F0 USART uses ISR (Interrupt and Status Register) and RDR (Receive Data Register).
+ *    The HAL_UART_ErrorCallback overrun-error clear must use ISR/RDR instead of SR/DR.
  */
 
 #include <string.h>
@@ -151,8 +156,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 					case CMD_CODE__SET_SEARCHLIGHT_PWM:
 						if(uart_rx_buf[CMD_PARAMS_INDEX] <= 100){
 							TIM_OC_InitTypeDef sConfigOC = {0};
-							sConfigOC.OCMode = TIM_OCMODE_PWM1;
-							sConfigOC.Pulse = uart_rx_buf[CMD_PARAMS_INDEX];
+							sConfigOC.OCMode     = TIM_OCMODE_PWM1;
+							sConfigOC.Pulse      = uart_rx_buf[CMD_PARAMS_INDEX];
 							sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
 							sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
 							HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_4);
@@ -198,8 +203,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
 	if(huart == &huart1){
 		if((huart1.ErrorCode & HAL_UART_ERROR_ORE)){
-			READ_REG(huart1.Instance->SR);
-			READ_REG(huart1.Instance->DR);
+			/* STM32F0 USART register names:
+			 *   ISR = Interrupt and Status Register  (replaces F1 SR)
+			 *   RDR = Receive Data Register          (replaces F1 DR)
+			 * Reading ISR then RDR clears the ORE (overrun error) flag. */
+			READ_REG(huart1.Instance->ISR);
+			READ_REG(huart1.Instance->RDR);
 		}
 	}
 }

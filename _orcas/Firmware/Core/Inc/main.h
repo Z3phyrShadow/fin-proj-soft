@@ -4,12 +4,12 @@
   * @file           : main.h
   * @brief          : Header for main.c file.
   *                   ORCAS v2 – Laser turret build.
-  *                   Hardware: STM32F103 Nucleo + CNC Shield V3 + 2x A4988
+  *                   Hardware: STM32F030R8 Nucleo + CNC Shield V3 + 2x A4988
   *                   Pan motor  : X-axis A4988  (PC12 STEP / PD2 DIR)
   *                   Tilt motor : Y-axis A4988  (PB3  STEP / PB4 DIR)
   *                   Pan origin : PC6  (active-LOW limit switch, EXTI falling)
   *                   UART       : USART1 PA9/PA10, 9600 baud
-  *                   Searchlight: TIM3 CH4 PWM (searchlight/targeting LED)
+  *                   Searchlight: TIM3 CH4 PWM  → PB1 (AF1)
   *
   *  Compile-time feature flags:
   *    #define PAN_CTRL          – enable pan stepper
@@ -42,7 +42,7 @@ extern "C" {
 #endif
 
 /* Includes ------------------------------------------------------------------*/
-#include "stm32f1xx_hal.h"
+#include "stm32f0xx_hal.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -93,7 +93,8 @@ void MX_I2C_ForceClearBusyFlag(I2C_HandleTypeDef *hi2c,
 /* ── Pan origin limit switch ─────────────────────────────────────────────  */
 #define PAN_MOTOR_ORIGIN_Pin        GPIO_PIN_6
 #define PAN_MOTOR_ORIGIN_GPIO_Port  GPIOC
-#define PAN_MOTOR_ORIGIN_EXTI_IRQn  EXTI9_5_IRQn
+/* NOTE: On F030 EXTI lines 4-15 share one IRQ: EXTI4_15_IRQn               */
+#define PAN_MOTOR_ORIGIN_EXTI_IRQn  EXTI4_15_IRQn
 
 /* ── Tilt motor (CNC Shield Y-axis) ─────────────────────────────────────  */
 #define TILT_MOTOR_STEP_Pin         GPIO_PIN_3
@@ -107,18 +108,18 @@ void MX_I2C_ForceClearBusyFlag(I2C_HandleTypeDef *hi2c,
 #define LED_D1_Pin                  GPIO_PIN_9
 #define LED_D1_GPIO_Port            GPIOB
 
-/* ── Searchlight / targeting LED (TIM3 CH4 PWM) ─────────────────────────  */
+/* ── Searchlight / targeting LED (TIM3 CH4 PWM → PB1, AF1) ─────────────  */
 #define TARGETING_LED_PWM_Pin       GPIO_PIN_1
 #define TARGETING_LED_PWM_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
-/* I2C1 pins - used by GY_TOF10M sensor                                     */
+/* I2C1 pins - used by GY_TOF10M sensor  (AF1 on F030)                     */
 #define I2C1_SDA_Pin        GPIO_PIN_7
 #define I2C1_SDA_GPIO_Port  GPIOB
 #define I2C1_SCL_Pin        GPIO_PIN_6
 #define I2C1_SCL_GPIO_Port  GPIOB
 
-/* I2C2 pins – retained in case TILT_USE_ACCEL is re-enabled later          */
+/* I2C2 pins – retained in case TILT_USE_ACCEL is re-enabled later (AF1)   */
 #define I2C2_SDA_Pin        GPIO_PIN_11
 #define I2C2_SDA_GPIO_Port  GPIOB
 #define I2C2_SCL_Pin        GPIO_PIN_10
