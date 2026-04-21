@@ -1,5 +1,28 @@
 import time
+import glob
 import serial
+
+# --- Port configuration -------------------------------------------------
+# The STM32 Nucleo connects via its onboard USB-to-serial bridge (ST-Link).
+# It appears on the Pi as a USB CDC virtual COM port: /dev/ttyACM0 (or ACM1, ACM2...).
+# /dev/ttyS0 is the Pi's GPIO hardware UART – do NOT use that.
+SERIAL_PORT = None          # set to e.g. '/dev/ttyACM0' to override auto-detect
+BAUD_RATE   = 9600
+# ------------------------------------------------------------------------
+
+def _find_nucleo_port():
+    """Return the first /dev/ttyACM* device found, or raise an error."""
+    if SERIAL_PORT:
+        return SERIAL_PORT
+    candidates = sorted(glob.glob('/dev/ttyACM*'))
+    if not candidates:
+        raise OSError(
+            "No Nucleo USB port found. "
+            "Check that the USB cable is connected (Nucleo micro-USB → Pi USB-A) "
+            "and the board is powered. Expected device: /dev/ttyACM0\n"
+            "Run: ls /dev/ttyACM* to list available ports."
+        )
+    return candidates[0]   # use the first one found (usually ttyACM0)
 
 cmd_header = 0x5A
 cmd_code = {'GET_FW_VER':                   0x01,
@@ -32,14 +55,16 @@ orcas_serial = None
 
 def init():
     global orcas_serial
-    
+
+    port = _find_nucleo_port()
+    print(f"orcas_serial.init(): connecting on {port} at {BAUD_RATE} baud")
     orcas_serial = serial.Serial(
-        port='/dev/ttyS0',      
-        baudrate=9600,        
-        bytesize=serial.EIGHTBITS, 
-        parity=serial.PARITY_NONE, 
-        stopbits=serial.STOPBITS_ONE, 
-        timeout=1            
+        port=port,
+        baudrate=BAUD_RATE,
+        bytesize=serial.EIGHTBITS,
+        parity=serial.PARITY_NONE,
+        stopbits=serial.STOPBITS_ONE,
+        timeout=1
     )
 
     if orcas_serial.is_open:
