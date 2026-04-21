@@ -26,10 +26,13 @@ CAMERA_ROTATE   = "90CW"     # "none" | "90CW" | "90CCW" | "180"
 STM32_PORT     = "/dev/ttyACM0"   # Nucleo serial port
 STM32_BAUD     = 115200
 
-# Camera field-of-view (Pi Camera v3 with 90° CW rotation: H/V swap)
-# After 90° rotation: effective HFOV ≈ physical VFOV and vice-versa
-CAMERA_HFOV_DEG = 66.0   # degrees horizontal  (post-rotation displayed image)
-CAMERA_VFOV_DEG = 52.0   # degrees vertical
+# Camera field-of-view — PHYSICAL sensor values in landscape orientation.
+# AxisMapper swaps HFOV/VFOV internally when CAMERA_ROTATE is 90CW/90CCW,
+# so that pan always uses the FOV spanning the displayed horizontal axis
+# and tilt uses the one spanning the displayed vertical axis.
+# Pi Camera v3 landscape: HFOV ≈ 66°, VFOV ≈ 52°
+CAMERA_HFOV_DEG = 66.0   # physical sensor horizontal FOV (landscape)
+CAMERA_VFOV_DEG = 52.0   # physical sensor vertical FOV   (landscape)
 
 # Motor step limits (software safety — beyond this, stop commanding)
 PAN_STEP_LIMIT   = 3200  # ≈ 360° in each direction

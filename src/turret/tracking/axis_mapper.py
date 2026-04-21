@@ -6,10 +6,18 @@ the pixel axes in the displayed frame no longer align with the physical
 pan/tilt motor axes.  This module un-rotates the error vector so the
 motors always move in the correct direction.
 
-cv2 rotation transforms (W×H original → rotated image):
-    90CW:   (x, y) → (H-1-y,   x)      inverse: sensor_X =  screen_Y,  sensor_Y = -screen_X
-    90CCW:  (x, y) → (y,       W-1-x)   inverse: sensor_X = -screen_Y,  sensor_Y =  screen_X
-    180:    (x, y) → (W-1-x,   H-1-y)   inverse: sensor_X = -screen_X,  sensor_Y = -screen_Y
+FOV convention (IMPORTANT):
+    CAMERA_HFOV_DEG / CAMERA_VFOV_DEG in config are the PHYSICAL sensor
+    FOV values *before* any software rotation (landscape orientation).
+    This module swaps them when a 90° rotation is active so that:
+        pan  always uses the FOV that spans the displayed horizontal axis
+        tilt always uses the FOV that spans the displayed vertical axis
+
+Angular projection:
+    Uses the accurate pinhole / arctangent model:
+        angle = atan( pixel_error × tan(fov/2) / (frame_half_size) )
+    which is exact for any rectilinear lens, unlike the linear
+    approximation (error/frame × fov) that underestimates by ~7–15%.
 
 Terminology:
     screen_X / screen_Y  → pixel axes in the POST-rotation displayed image
@@ -83,21 +91,32 @@ class AxisMapper:
         """
         rot = self._rot
 
-        # When the camera is mounted sideways and software-rotated, the physical 
-        # horizontal FOV and vertical FOV simply swap roles.
-        # But screen_X is ALWAYS left/right (pan), and screen_Y is ALWAYS up/down (tilt)
+        # When the camera is mounted sideways (90CW/90CCW) and software-rotated,
+        # the physical sensor HFOV spans the displayed vertical axis and VFOV
+        # spans the displayed horizontal axis — so we swap them.
+        # screen_X is always pan (left/right) and screen_Y is always tilt (up/down)
         # in the final post-rotation displayed image.
-        
         if rot in ("90cw", "90ccw"):
-            # The physical vertical bounds span the horizontal plane
-            eff_hfov = self._vfov
-            eff_vfov = self._hfov
+            eff_hfov = self._vfov   # physical VFOV → displayed horizontal span
+            eff_vfov = self._hfov   # physical HFOV → displayed vertical span
         else:
             eff_hfov = self._hfov
             eff_vfov = self._vfov
 
-        pan_deg  = (error_x / frame_w) * eff_hfov
-        tilt_deg = (error_y / frame_h) * eff_vfov
+        # ── Accurate pinhole / arctangent angular projection ──────────────────
+        # Linear approx (error/frame_size * fov) undershoots by 7–15% depending
+        # on the error magnitude.  The correct model:
+        #   focal_len_px = half_frame / tan(half_fov)
+        #   angle        = atan(error / focal_len_px)
+        #                = atan(error * tan(half_fov) / half_frame)
+        pan_deg  = math.degrees(
+            math.atan2(error_x * math.tan(math.radians(eff_hfov / 2.0)),
+                       frame_w / 2.0)
+        )
+        tilt_deg = math.degrees(
+            math.atan2(error_y * math.tan(math.radians(eff_vfov / 2.0)),
+                       frame_h / 2.0)
+        )
 
         # cv2 Y+ is DOWN. To follow a target going down, we must pitch DOWN.
         # STM32 Y+ is UP. So an error_y > 0 (down) requires a negative tilt degree.

@@ -109,7 +109,7 @@ class Tracker:
         # Step accumulator to avoid spamming the STM32 with micro-steps
         self._acc_pan_steps: float  = 0.0
         self._acc_tilt_steps: float = 0.0
-        self._min_chunk: int        = 20
+        self._min_chunk: int        = 5
 
         # ── Target history (for velocity prediction) ─────────────────────────
         self._history: deque[tuple[float, int, int]] = deque(
@@ -117,6 +117,11 @@ class Tracker:
         )  # (timestamp, cx, cy)
 
         self._current_track_id: int | None = None
+
+        # Last known frame dimensions — kept so _chase_predict() doesn't
+        # need hardcoded fallback values.
+        self._last_frame_w: int = 480
+        self._last_frame_h: int = 360
 
         print(f"[TRACKER] Initialized: PID({kp:.2f}, {ki:.3f}, {kd:.2f})  "
               f"deadzone={deadzone_px}px  chase={chase_timeout_s}s  "
@@ -144,6 +149,9 @@ class Tracker:
         tof_mm: float = 0.0,
         allow_movement: bool = True,
     ) -> TrackState:
+        # Always update last-known frame size so chase/search use correct dims
+        self._last_frame_w = frame_w
+        self._last_frame_h = frame_h
         """
         Run one tracking cycle.  Call every frame.
 
@@ -359,8 +367,8 @@ class Tracker:
 
         # Convert velocity (pixels/sec) to degrees/sec
         pan_deg_per_sec, tilt_deg_per_sec = self._mapper.to_degrees(
-            vx, vy, 
-            480, 360,  # approximate frame size
+            vx, vy,
+            self._last_frame_w, self._last_frame_h,
         )
 
         # Chase steps for this frame = degrees/sec * frame_duration * steps/deg
