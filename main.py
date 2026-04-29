@@ -160,6 +160,10 @@ class RakshaqSystem:
         self.running        = False
         self.current_target = None
         self.frame_count    = 0
+        self._fps           = 0.0
+        self._fps_ts        = time.monotonic()
+        self._fps_counter   = 0
+        self._engagements_log: list[str] = []   # kept for dashboard
 
         print("\n[INIT] ✅ System ready!")
         print(f"[MODE]  {self.action_controller.current_mode.value.upper()}")
@@ -242,8 +246,37 @@ class RakshaqSystem:
         annotated = self.visualizer.draw_detections(frame, detections, selected_target=target)
         annotated = self._add_overlays(annotated, target, depth)
 
-        # Stream
+        # ── FPS counter ───────────────────────────────────────────────────────
+        self._fps_counter += 1
+        now = time.monotonic()
+        if now - self._fps_ts >= 1.0:
+            self._fps      = self._fps_counter / (now - self._fps_ts)
+            self._fps_counter = 0
+            self._fps_ts   = now
+
+        # ── Stream frame ──────────────────────────────────────────────────────
         self.streamer.update(annotated)
+
+        # ── Push telemetry to dashboard ───────────────────────────────────────
+        pan_deg, tilt_deg = self.tracker.get_position()
+        self.streamer.set_status({
+            "mode":          self.action_controller.current_mode.value.upper(),
+            "track_state":   tracking_state.name,
+            "tof_mm":        self.tof.distance_mm,
+            "sonar_mm":      self.sonar.distance_mm,
+            "pan_deg":       round(pan_deg, 1),
+            "tilt_deg":      round(tilt_deg, 1),
+            "fps":           round(self._fps, 1),
+            "laser_active":  self.laser.is_active,
+            "depth_enabled": self._depth_enabled,
+            "depth_mm":      round(self._last_depth) if self.depth_estimator.uses_mm else 0,
+            "depth_thresh":  self.depth_ui.threshold if self.depth_ui else config.DEPTH_THRESHOLD,
+            "stm32_ok":      self.tracker._stm32.connected,
+            "target_label":  target.class_name if target else None,
+            "target_conf":   round(target.confidence * 100) if target else 0,
+            "track_id":      target.track_id  if target else None,
+            "engagements":   self._engagements_log[-20:],
+        })
 
         return annotated
 

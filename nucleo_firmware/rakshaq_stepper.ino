@@ -4,10 +4,11 @@
  * ============================================================
  *
  * Board  : STM32 Nucleo-F030R8 (Arduino IDE + STM32duino core)
+ * Shield : Standard Arduino CNC Shield v3.0
  * Role   : Pan/Tilt stepper motor driver for the RAKSHAQ
  *          autonomous AI turret system.
  *
- * Communication (Raspberry Pi  →  Nucleo):
+ * Communication (Raspberry Pi → Nucleo):
  *   Interface : USB-CDC (Virtual COM Port) — /dev/ttyACM0 on Pi
  *   Baud Rate : 115200
  *   Protocol  : ASCII lines, newline-terminated
@@ -15,77 +16,72 @@
  * Command set (matches stm32.py STM32Controller.send()):
  *   X<steps>\n   — Pan  axis  (+ = right, – = left)
  *   Y<steps>\n   — Tilt axis  (+ = up,    – = down)
- *   X0\n         — Pan  heartbeat / stop
- *   Y0\n         — Tilt heartbeat / stop
+ *   X0\n / Y0\n  — Heartbeat / stop (no motion)
+ *
+ * CNC Shield v3 pin map (these are FIXED by the shield PCB):
+ * ┌──────────┬──────┬─────┬────────────────────────┐
+ * │ Axis     │ STEP │ DIR │ Notes                  │
+ * ├──────────┼──────┼─────┼────────────────────────┤
+ * │ X (Pan)  │  D2  │  D5 │ Left/Right motor       │
+ * │ Y (Tilt) │  D3  │  D6 │ Up/Down motor          │
+ * │ Z        │  D4  │  D7 │ Unused                 │
+ * ├──────────┼──────┼─────┼────────────────────────┤
+ * │ ENABLE   │  D8  │  —  │ Shared, active LOW     │
+ * │ MS1/2/3  │ D10/11/12  │ Microstepping (see note│
+ * └──────────┴──────┴─────┴────────────────────────┘
+ *
+ * Microstepping note:
+ *   MS pins are shared across all drivers on the CNC shield.
+ *   With 1/16 step (user confirmed): MS1=HIGH, MS2=HIGH, MS3=HIGH
+ *   These are hardwired on the shield by jumpers — no code needed.
  *
  * Motor math (matches STEPS_PER_DEGREE = 400/45 ≈ 8.888 in stm32.py):
- *   Driver microstepping : 1/16
- *   Steps per revolution : 200 full × 16 micro = 3200 steps/rev
- *   400 steps = 45°  →  8.888 steps per degree
- *
- * Motor driver wiring (A4988 / DRV8825 — same pinout):
- *
- *   PAN  stepper driver:
- *     STEP  → D3   (PA_4  — Timer-capable)
- *     DIR   → D4   (PB_5)
- *     EN    → D5   (PB_4, active LOW)
- *
- *   TILT stepper driver:
- *     STEP  → D6   (PB_10)
- *     DIR   → D7   (PA_8)
- *     EN    → D8   (PA_9, active LOW)
- *
- *   MS1/MS2/MS3 on both drivers → tie HIGH/HIGH/HIGH for 1/16 step
- *   SLEEP / RESET → tie HIGH (or wire together and pull HIGH)
- *   VMOT → 12V rail;  VDD → 3.3V;  GND shared with Nucleo GND
- *
- * LED feedback:
- *   LD2 (PA_5 / D13)  — blinks on every valid command received
+ *   Full steps/rev : 200
+ *   Microstepping  : 1/16
+ *   Steps/rev      : 200 × 16 = 3200
+ *   Steps/degree   : 3200 / 360 ≈ 8.888
+ *   400 steps      = 45°
  *
  * ============================================================
  */
 
 // ──────────────────────────────────────────────────────────────
-//  Pin definitions
+//  CNC Shield v3 Pin Definitions  (DO NOT CHANGE — PCB-wired)
 // ──────────────────────────────────────────────────────────────
 
-// PAN axis (X commands)
-#define PAN_STEP_PIN   3     // D3
-#define PAN_DIR_PIN    4     // D4
-#define PAN_EN_PIN     5     // D5
+#define X_STEP_PIN   2      // Pan axis STEP  (D2)
+#define X_DIR_PIN    5      // Pan axis DIR   (D5)
 
-// TILT axis (Y commands)
-#define TILT_STEP_PIN  6     // D6
-#define TILT_DIR_PIN   7     // D7
-#define TILT_EN_PIN    8     // D8
+#define Y_STEP_PIN   3      // Tilt axis STEP (D3)
+#define Y_DIR_PIN    6      // Tilt axis DIR  (D6)
 
-// Status LED (on-board LD2)
-#define LED_PIN        LED_BUILTIN    // PA5 on Nucleo-F030R8
+#define ENABLE_PIN   8      // Shared driver ENABLE — active LOW (D8)
+
+// Status LED (on-board LD2 — PA5 on Nucleo-F030R8)
+#define LED_PIN      LED_BUILTIN
 
 // ──────────────────────────────────────────────────────────────
 //  Stepper timing
 // ──────────────────────────────────────────────────────────────
 
 /*
- * Pulse width for the STEP pin (microseconds).
- * A4988 minimum is 1 µs, DRV8825 minimum is 1.9 µs.
- * 5 µs gives comfortable margin.
+ * STEP pulse width (µs).
+ * A4988 min = 1 µs, DRV8825 min = 1.9 µs. 5 µs is safe for both.
  */
 #define STEP_PULSE_US   5
 
 /*
- * Base delay between steps (microseconds).
- * Lower = faster.  Too low risks missed steps.
- * 800 µs  → ~1250 steps/sec → ~140°/sec at 8.89 steps/deg
- * Adjust if your motors skip steps or stall.
+ * Delay between steps (µs) — controls motor speed.
+ * 800 µs → ~1250 steps/sec → ~140°/sec at 8.89 steps/deg.
+ * Lower = faster. Too low = missed steps / stall.
  */
 #define STEP_DELAY_US   800
 
 // ──────────────────────────────────────────────────────────────
-//  Serial configuration
+//  Serial
 // ──────────────────────────────────────────────────────────────
-#define SERIAL_BAUD     115200
-#define CMD_BUF_SIZE    32      // max command string length
+#define SERIAL_BAUD   115200
+#define CMD_BUF_SIZE  32
 
 // ──────────────────────────────────────────────────────────────
 //  State
@@ -94,21 +90,16 @@ char    cmd_buf[CMD_BUF_SIZE];
 uint8_t cmd_idx = 0;
 
 // ──────────────────────────────────────────────────────────────
-//  Helper: step a driver N steps
-//
-//  stepPin  : STEP signal pin
-//  dirPin   : DIR signal pin
-//  steps    : number of steps (negative = reverse direction)
+//  Helper: drive a stepper N steps
 // ──────────────────────────────────────────────────────────────
-void stepMotor(int stepPin, int dirPin, int steps) {
+void stepMotor(uint8_t stepPin, uint8_t dirPin, int steps) {
   if (steps == 0) return;
 
-  // Set direction
   digitalWrite(dirPin, steps > 0 ? HIGH : LOW);
-  delayMicroseconds(1);           // DIR setup time (≥200 ns for A4988)
+  delayMicroseconds(2);     // DIR setup time (≥200 ns for A4988/DRV8825)
 
-  int absSteps = abs(steps);
-  for (int i = 0; i < absSteps; i++) {
+  int n = abs(steps);
+  for (int i = 0; i < n; i++) {
     digitalWrite(stepPin, HIGH);
     delayMicroseconds(STEP_PULSE_US);
     digitalWrite(stepPin, LOW);
@@ -117,41 +108,33 @@ void stepMotor(int stepPin, int dirPin, int steps) {
 }
 
 // ──────────────────────────────────────────────────────────────
-//  Helper: blink LED briefly to signal a received command
+//  Helper: brief LED blink → visual confirmation of each command
 // ──────────────────────────────────────────────────────────────
 void blinkLED() {
   digitalWrite(LED_PIN, HIGH);
-  delay(30);
+  delay(25);
   digitalWrite(LED_PIN, LOW);
 }
 
 // ──────────────────────────────────────────────────────────────
-//  Parse and execute a complete command string.
-//
-//  Expected formats:  "X<int>"  or  "Y<int>"
-//  e.g.  "X200"  "X-50"  "Y0"  "Y-100"
+//  Parse and execute one complete command string.
+//  Format: "X<int>" or "Y<int>"   e.g. "X200"  "X-50"  "Y0"
 // ──────────────────────────────────────────────────────────────
 void executeCommand(const char* cmd) {
   char axis = cmd[0];
-
-  // Must start with X or Y
   if (axis != 'X' && axis != 'Y') return;
 
-  // Parse the integer that follows
-  int steps = atoi(cmd + 1);
+  int steps = atoi(cmd + 1);   // handles negative numbers correctly
 
   blinkLED();
 
   if (axis == 'X') {
-    // Pan axis
-    stepMotor(PAN_STEP_PIN, PAN_DIR_PIN, steps);
+    stepMotor(X_STEP_PIN, X_DIR_PIN, steps);   // Pan
   } else {
-    // Tilt axis
-    stepMotor(TILT_STEP_PIN, TILT_DIR_PIN, steps);
+    stepMotor(Y_STEP_PIN, Y_DIR_PIN, steps);   // Tilt
   }
 
-  // Acknowledge back to Pi (optional — Pi doesn't currently read replies,
-  // but useful for debugging with a serial monitor)
+  // Echo back to Pi (useful for debugging, harmless in production)
   Serial.print("OK ");
   Serial.println(cmd);
 }
@@ -160,61 +143,52 @@ void executeCommand(const char* cmd) {
 //  setup()
 // ──────────────────────────────────────────────────────────────
 void setup() {
-  // USB-CDC serial (shows up as /dev/ttyACM0 on the Pi)
   Serial.begin(SERIAL_BAUD);
 
-  // PAN driver pins
-  pinMode(PAN_STEP_PIN, OUTPUT);
-  pinMode(PAN_DIR_PIN,  OUTPUT);
-  pinMode(PAN_EN_PIN,   OUTPUT);
-  digitalWrite(PAN_EN_PIN, LOW);     // Enable driver (active LOW)
+  // CNC Shield pins
+  pinMode(X_STEP_PIN, OUTPUT);
+  pinMode(X_DIR_PIN,  OUTPUT);
+  pinMode(Y_STEP_PIN, OUTPUT);
+  pinMode(Y_DIR_PIN,  OUTPUT);
 
-  // TILT driver pins
-  pinMode(TILT_STEP_PIN, OUTPUT);
-  pinMode(TILT_DIR_PIN,  OUTPUT);
-  pinMode(TILT_EN_PIN,   OUTPUT);
-  digitalWrite(TILT_EN_PIN, LOW);    // Enable driver (active LOW)
+  // Single shared ENABLE — pull LOW to energise all drivers
+  pinMode(ENABLE_PIN, OUTPUT);
+  digitalWrite(ENABLE_PIN, LOW);
 
   // Status LED
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
-  // Startup blink sequence — 3 quick flashes to confirm power-on
+  // 3-blink startup sequence
   for (int i = 0; i < 3; i++) {
-    digitalWrite(LED_PIN, HIGH); delay(100);
-    digitalWrite(LED_PIN, LOW);  delay(100);
+    digitalWrite(LED_PIN, HIGH); delay(120);
+    digitalWrite(LED_PIN, LOW);  delay(120);
   }
 
-  Serial.println("RAKSHAQ Nucleo ready. Awaiting X/Y commands at 115200.");
+  Serial.println("RAKSHAQ Nucleo ready. X=pan  Y=tilt  @115200.");
 }
 
 // ──────────────────────────────────────────────────────────────
 //  loop()
-//
-//  Read bytes from USB-CDC serial, buffer them until '\n', then
-//  forward the complete line to executeCommand().
+//  Accumulate bytes into a buffer; execute on newline.
 // ──────────────────────────────────────────────────────────────
 void loop() {
   while (Serial.available() > 0) {
     char c = (char)Serial.read();
 
-    // Ignore carriage returns (handles \r\n from Python's serial lib)
-    if (c == '\r') continue;
+    if (c == '\r') continue;    // ignore CR in \r\n pairs from pyserial
 
     if (c == '\n') {
-      // Null-terminate and execute
       cmd_buf[cmd_idx] = '\0';
       if (cmd_idx > 0) {
         executeCommand(cmd_buf);
       }
-      cmd_idx = 0;   // reset buffer for next command
+      cmd_idx = 0;
     } else {
-      // Append character — guard against overflow
       if (cmd_idx < CMD_BUF_SIZE - 1) {
         cmd_buf[cmd_idx++] = c;
       } else {
-        // Buffer overflow: discard and reset
-        cmd_idx = 0;
+        cmd_idx = 0;   // overflow — discard and reset
       }
     }
   }
