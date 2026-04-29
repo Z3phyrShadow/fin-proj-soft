@@ -17,6 +17,7 @@ from src.turret.detection.camera   import get_camera
 from src.turret.detection.detector import YOLODetector
 from src.turret.detection.depth    import DepthEstimator
 from src.turret.hardware.sensors   import TOFSensor, UltrasonicSensor, LaserController
+from src.turret.hardware.radar     import RadarServo
 from src.turret.utils.visualizer   import Visualizer
 from src.turret.utils.streamer     import FrameStreamer
 from src.turret.ui.depth_control   import DepthControlUI
@@ -103,6 +104,16 @@ class RakshaqSystem:
 
         self.laser = LaserController(pin=config.LASER_GPIO_PIN)
         self.laser.start()
+
+        # Radar servo — sweeps sonar through ±RADAR_HALF_ANGLE cone
+        self.radar = RadarServo(
+            gpio_pin   = config.RADAR_GPIO_PIN,
+            half_angle = config.RADAR_HALF_ANGLE,
+            step_deg   = config.RADAR_STEP_DEG,
+            step_delay = config.RADAR_STEP_DELAY,
+            sonar      = self.sonar,
+        )
+        self.radar.start()
 
         # ── Phase 2b: Depth ───────────────────────────────────────────────────
         print("\n[INIT] Phase 2b: Depth")
@@ -276,6 +287,10 @@ class RakshaqSystem:
             "target_conf":   round(target.confidence * 100) if target else 0,
             "track_id":      target.track_id  if target else None,
             "engagements":   self._engagements_log[-20:],
+            # Radar
+            "radar_angle":   round(self.radar.angle, 1),
+            "radar_points":  self.radar.scan_points,
+            "radar_max_mm":  config.RADAR_MAX_MM,
         })
 
         return annotated
@@ -492,6 +507,7 @@ class RakshaqSystem:
         print("[CLEANUP] Stopping sensors...")
         self.tof.stop()
         self.sonar.stop()
+        self.radar.stop()
         self.laser.stop()   # always safe the laser first
         print("[CLEANUP] Stopping camera...")
         self.camera.release()

@@ -94,6 +94,15 @@ SONAR_MAX_DISTANCE_M = 4.0  # gpiozero DistanceSensor max_distance (metres)
 
 LASER_GPIO_PIN      = 27    # MOSFET gate driving the laser (OutputDevice)
 
+# ==================== HARDWARE — RADAR SERVO ====================
+# Servo sweeps the sonar sensor through a ±RADAR_HALF_ANGLE cone.
+# Signal wire → GPIO 12 (Pi physical pin 32, hardware PWM capable).
+RADAR_GPIO_PIN   = 12      # BCM GPIO pin for servo signal
+RADAR_HALF_ANGLE = 45      # sweep cone half-width in degrees (±45°)
+RADAR_STEP_DEG   = 2.0     # angular step per iteration (smaller = smoother)
+RADAR_STEP_DELAY = 0.03    # seconds per step (~33 steps/sec, full sweep ≈ 2.7 s)
+RADAR_MAX_MM     = 4000    # display range ceiling for radar canvas (mm)
+
 # ==================== ACTION LAYER ====================
 DEFAULT_MODE = "monitor"    # "standby" | "monitor" | "engage" | "abort"
 
