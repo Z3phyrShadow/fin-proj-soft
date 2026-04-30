@@ -198,8 +198,6 @@
       display: flex;
       flex-direction: column;
       gap: 6px;
-      align-items: center;
-      justify-content: center;
     }
 
     /* ── Bottom bar ── */
@@ -315,10 +313,8 @@
        CAMERA FEED
     ═══════════════════════════════════════════════════════════ */
     .camera-wrap {
-      /* Portrait 360×480 — matches the rotated Pi camera stream exactly */
-      aspect-ratio: 360 / 480;
-      max-height: calc(100vh - 52px - 56px - 24px);
-      width: auto;
+      flex: 1;
+      min-width: 0;
       background: #000;
       border: 1px solid var(--border);
       border-radius: var(--panel-radius);
@@ -330,10 +326,10 @@
     }
 
     .camera-feed {
-      /* Box ratio matches stream — no letterboxing needed */
-      width: 100%;
+      /* Portrait stream: scale from height so nothing is cropped */
       height: 100%;
-      object-fit: fill;
+      width: auto;
+      max-width: 100%;
       display: block;
     }
 

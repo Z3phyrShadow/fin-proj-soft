@@ -44,7 +44,7 @@ MOTOR_MAX_STEPS_PER_FRAME = 200  # ≈ 22°
 # Pan/tilt direction inversion (flip if motor moves the wrong way).
 # These only control motor wiring direction — axis swapping due to
 # camera rotation is handled automatically by AxisMapper.
-PAN_INVERT  = False
+PAN_INVERT  = True
 TILT_INVERT = True
 
 # ==================== BARREL GEOMETRY ====================
