@@ -102,10 +102,12 @@ AUTO_SCAN_ON_NO_TARGET = True
 SCAN_INTERVAL          = 30  # seconds between auto-scans when no target
 
 # ==================== DISPLAY ====================
-SHOW_MODE_INDICATOR  = True
-SHOW_TARGET_RETICLE  = True
-SHOW_POSITION_INFO   = True
-SHOW_SENSOR_HUD      = True   # show TOF + sonar readings on main feed
+# All text overlays disabled — the web dashboard now shows this info.
+# Set individual flags to True to re-enable overlays on the raw feed.
+SHOW_MODE_INDICATOR  = False
+SHOW_TARGET_RETICLE  = False
+SHOW_POSITION_INFO   = False
+SHOW_SENSOR_HUD      = False  # TOF + sonar readings
 
 COLOR_TARGET       = (0, 0, 255)
 COLOR_RETICLE      = (0, 255, 255)
